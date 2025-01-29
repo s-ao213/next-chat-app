@@ -1,7 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   images: {
-    domains: ["bujcyjitngtgpkabcqtk.supabase.co"],
+    domains: ["otfwmdyekyeqsiurficc.supabase.co"],
   },
   experimental: {
     serverActions: true,
@@ -10,6 +10,9 @@ const nextConfig = {
   webpack: (config) => {
     config.externals = [...config.externals, "pg-native"];
     return config;
+  },
+  images: {
+    domains: ["otfwmdyekyeqsiurficc.supabase.co"], // Supabaseのプロジェクトドメインを追加
   },
 };
 

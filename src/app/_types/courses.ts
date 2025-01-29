@@ -16,8 +16,8 @@ export type CourseName = (typeof COURSE_NAMES)[number];
 
 export interface UserProfile {
   id: string;
+
   name: string | null;
-  affiliation_type: AffiliationType | null;
-  student_year?: number | null;
-  student_course?: number | null;
+
+  avatar_url: string | null;
 }

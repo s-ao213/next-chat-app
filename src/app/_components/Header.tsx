@@ -17,7 +17,7 @@ const Header = () => {
         onClick={() => router.push("/")}
         className="text-xl font-bold cursor-pointer hover:text-blue-600 transition-colors"
       >
-        学食モバイルオーダー
+        オリジナルチャットアプリ
       </div>
       <div className="flex items-center space-x-4">
         <div

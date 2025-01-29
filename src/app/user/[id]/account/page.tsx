@@ -4,12 +4,9 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import Header from "@/app/_components/Header";
-import { Pencil, Save, X, AlertTriangle } from "lucide-react";
-import {
-  UserProfile,
-  AffiliationType,
-  COURSE_NAMES,
-} from "@/app/_types/courses";
+import { Pencil, Save, X, AlertTriangle, Upload, User } from "lucide-react";
+import Image from "next/image";
+import { UserProfile } from "@/app/_types/courses";
 
 export default function AccountPage({ params }: { params: { id: string } }) {
   const router = useRouter();
@@ -18,17 +15,13 @@ export default function AccountPage({ params }: { params: { id: string } }) {
   const [profile, setProfile] = useState<UserProfile>({
     id: params.id,
     name: null,
-    affiliation_type: null,
-    student_year: null,
-    student_course: null,
+    avatar_url: null,
   });
 
   const [editedProfile, setEditedProfile] = useState<UserProfile>({
     id: params.id,
     name: null,
-    affiliation_type: null,
-    student_year: null,
-    student_course: null,
+    avatar_url: null,
   });
 
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -38,12 +31,11 @@ export default function AccountPage({ params }: { params: { id: string } }) {
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
+  const [uploading, setUploading] = useState(false);
 
-  // プロフィールデータの取得
   // プロフィールデータの取得
   const fetchProfile = async () => {
     try {
-      // セッションの確認
       const {
         data: { session },
         error: sessionError,
@@ -66,7 +58,6 @@ export default function AccountPage({ params }: { params: { id: string } }) {
 
       setEmail(session.user.email || "");
 
-      // プロフィールデータの取得
       const { data: profileData, error: profileError } = await supabase
         .from("profiles")
         .select("*")
@@ -74,14 +65,11 @@ export default function AccountPage({ params }: { params: { id: string } }) {
         .single();
 
       if (profileError) {
-        // データが存在しない場合は新規作成
         if (profileError.code === "PGRST116") {
           const newProfile = {
             id: session.user.id,
             name: null,
-            affiliation_type: null,
-            student_year: null,
-            student_course: null,
+            avatar_url: null,
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
           };
@@ -116,11 +104,9 @@ export default function AccountPage({ params }: { params: { id: string } }) {
     }
   };
 
-  // useEffectの修正
   useEffect(() => {
     fetchProfile();
 
-    // リアルタイム更新の購読
     const channel = supabase
       .channel(`profile:${params.id}`)
       .on(
@@ -143,63 +129,139 @@ export default function AccountPage({ params }: { params: { id: string } }) {
       )
       .subscribe();
 
-    // クリーンアップ関数
     return () => {
       channel.unsubscribe();
     };
   }, [params.id, router, isEditing]);
 
+  // アバターアップロード処理
+  const handleAvatarUpload = async (
+    event: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    try {
+      if (!event.target.files || event.target.files.length === 0) {
+        return;
+      }
+
+      setUploading(true);
+      const file = event.target.files[0];
+
+      // ファイルサイズのチェック (2MB以下)
+      if (file.size > 2 * 1024 * 1024) {
+        throw new Error("ファイルサイズは2MB以下にしてください");
+      }
+
+      // ファイル形式のチェック
+      const allowedTypes = ["image/jpeg", "image/png", "image/gif"];
+      if (!allowedTypes.includes(file.type)) {
+        throw new Error("JPG, PNG, GIF形式のみアップロード可能です");
+      }
+
+      // ファイル名の生成
+      const fileExt = file.name.split(".").pop()?.toLowerCase();
+      const fileName = `${params.id}-${Math.random().toString(36).slice(2)}.${fileExt}`;
+
+      // 古いアバター画像の削除
+      if (editedProfile.avatar_url) {
+        const oldPath = editedProfile.avatar_url.split("/").pop();
+        if (oldPath) {
+          const { error: removeError } = await supabase.storage
+            .from("avatars")
+            .remove([oldPath]);
+
+          if (removeError) {
+            console.error("Old avatar removal error:", removeError);
+            // 古い画像の削除に失敗しても、新しい画像のアップロードは続行
+          }
+        }
+      }
+
+      // 新しいアバター画像のアップロード
+      const { error: uploadError, data: uploadData } = await supabase.storage
+        .from("avatars")
+        .upload(fileName, file, {
+          cacheControl: "3600",
+          upsert: false,
+        });
+
+      if (uploadError) {
+        throw uploadError;
+      }
+
+      // 公開URLの取得
+      const { data: publicUrlData } = supabase.storage
+        .from("avatars")
+        .getPublicUrl(fileName);
+
+      if (!publicUrlData.publicUrl) {
+        throw new Error("アバターURLの取得に失敗しました");
+      }
+
+      // プロフィールの更新
+      const { error: updateError } = await supabase
+        .from("profiles")
+        .update({
+          avatar_url: publicUrlData.publicUrl,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", params.id);
+
+      if (updateError) {
+        throw updateError;
+      }
+
+      setEditedProfile({
+        ...editedProfile,
+        avatar_url: publicUrlData.publicUrl,
+      });
+
+      setErrorMessage("");
+    } catch (error: any) {
+      console.error("Avatar upload error:", error);
+      setErrorMessage(error.message || "アバターのアップロードに失敗しました");
+
+      // エラーが発生した場合、編集中のプロフィールを元に戻す
+      setEditedProfile({ ...profile });
+    } finally {
+      setUploading(false);
+    }
+  };
+
   // プロフィール保存
+
+  const handleEdit = () => {
+    setIsEditing(true);
+    setEditedProfile({ ...profile });
+  };
+
+  const handleCancel = () => {
+    setIsEditing(false);
+    setEditedProfile({ ...profile });
+    setErrorMessage("");
+  };
+
   const handleSave = async () => {
     try {
-      // データの検証
       if (!editedProfile.name?.trim()) {
         setErrorMessage("名前を入力してください");
         return;
       }
 
-      if (!editedProfile.affiliation_type) {
-        setErrorMessage("所属区分を選択してください");
-        return;
-      }
+      const updates = {
+        name: editedProfile.name.trim(),
+        avatar_url: editedProfile.avatar_url,
+        updated_at: new Date().toISOString(),
+      };
 
-      // 学生の場合は追加の検証
-      if (editedProfile.affiliation_type === "学生") {
-        if (!editedProfile.student_year) {
-          setErrorMessage("学年を選択してください");
-          return;
-        }
-        if (!editedProfile.student_course) {
-          setErrorMessage("コースを選択してください");
-          return;
-        }
-      }
-
-      // プロフィールデータの更新
-      const { data, error } = await supabase
+      const { error } = await supabase
         .from("profiles")
-        .update({
-          name: editedProfile.name.trim(),
-          affiliation_type: editedProfile.affiliation_type,
-          student_year:
-            editedProfile.affiliation_type === "学生"
-              ? editedProfile.student_year
-              : null,
-          student_course:
-            editedProfile.affiliation_type === "学生"
-              ? editedProfile.student_course
-              : null,
-          updated_at: new Date().toISOString(),
-        })
+        .update(updates)
         .eq("id", params.id)
-        .select()
-        .single();
+        .select();
 
       if (error) throw error;
 
-      // 更新成功時の処理
-      setProfile(data);
-      setEditedProfile(data);
+      setProfile(editedProfile);
       setIsEditing(false);
       setErrorMessage("");
       alert("プロフィールを更新しました");
@@ -209,20 +271,6 @@ export default function AccountPage({ params }: { params: { id: string } }) {
     }
   };
 
-  // 編集開始
-  const handleEdit = () => {
-    setIsEditing(true);
-    setEditedProfile({ ...profile });
-  };
-
-  // 編集キャンセル
-  const handleCancel = () => {
-    setIsEditing(false);
-    setEditedProfile({ ...profile });
-    setErrorMessage("");
-  };
-
-  // メールアドレス更新
   const handleUpdateEmail = async () => {
     try {
       if (!newEmail.trim()) {
@@ -249,7 +297,6 @@ export default function AccountPage({ params }: { params: { id: string } }) {
     }
   };
 
-  // パスワード更新
   const handleUpdatePassword = async () => {
     try {
       if (!newPassword.trim()) {
@@ -275,15 +322,11 @@ export default function AccountPage({ params }: { params: { id: string } }) {
     }
   };
 
-  // アカウント削除
   const handleDeleteAccount = async () => {
     try {
-      const confirmed = window.confirm(
-        "本当にアカウントを削除しますか？この操作は取り消せません。"
-      );
-      if (!confirmed) return;
-
-      const { error } = await supabase.auth.admin.deleteUser(params.id);
+      const { error } = await supabase.rpc("delete_user", {
+        user_id: params.id,
+      });
       if (error) throw error;
 
       await supabase.auth.signOut();
@@ -329,29 +372,58 @@ export default function AccountPage({ params }: { params: { id: string } }) {
             </div>
           )}
         </div>
-
         {errorMessage && (
           <div className="mb-4 p-4 bg-red-100 text-red-700 rounded-md">
             {errorMessage}
           </div>
         )}
-
-        {/* メールアドレス設定 */}
+        {/* プロフィール設定 */}
         <div className="bg-white rounded-lg shadow-md p-6 mb-6">
-          <h2 className="text-xl font-semibold mb-4">メールアドレス設定</h2>
-          <div className="mb-4">
+          <h2 className="text-xl font-semibold mb-4">プロフィール設定</h2>
+
+          {/* アバター設定 */}
+          <div className="mb-6">
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              現在のメールアドレス
+              プロフィール画像
             </label>
-            <input
-              type="email"
-              value={email}
-              disabled
-              className="w-full p-2 border rounded-md bg-gray-50"
-            />
+            <div className="flex items-center space-x-4">
+              <div className="relative w-24 h-24 rounded-full overflow-hidden bg-gray-100">
+                {editedProfile.avatar_url ? (
+                  <Image
+                    src={editedProfile.avatar_url}
+                    alt="Profile Avatar"
+                    fill
+                    className="object-cover"
+                  />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center bg-gray-200">
+                    <User size={40} className="text-gray-400" />
+                  </div>
+                )}
+              </div>
+              {isEditing && (
+                <div>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleAvatarUpload}
+                    className="hidden"
+                    id="avatar-upload"
+                    disabled={uploading}
+                  />
+                  <label
+                    htmlFor="avatar-upload"
+                    className="flex items-center px-4 py-2 bg-gray-100 text-gray-700 rounded-md cursor-pointer hover:bg-gray-200"
+                  >
+                    <Upload size={20} className="mr-2" />
+                    {uploading ? "アップロード中..." : "画像をアップロード"}
+                  </label>
+                </div>
+              )}
+            </div>
           </div>
 
-          {/* 名前 */}
+          {/* 名前設定 */}
           <div className="mb-6">
             <label className="block text-sm font-medium text-gray-700 mb-2">
               名前
@@ -371,106 +443,21 @@ export default function AccountPage({ params }: { params: { id: string } }) {
               </div>
             )}
           </div>
-
-          {/* 所属区分 */}
-          <div className="mb-6">
+        </div>
+        {/* メールアドレス設定 */}
+        <div className="bg-white rounded-lg shadow-md p-6 mb-6">
+          <h2 className="text-xl font-semibold mb-4">メールアドレス設定</h2>
+          <div className="mb-4">
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              所属区分
+              現在のメールアドレス
             </label>
-            {isEditing ? (
-              <select
-                value={editedProfile.affiliation_type || ""}
-                onChange={(e) => {
-                  const value = e.target.value as AffiliationType;
-                  setEditedProfile({
-                    ...editedProfile,
-                    affiliation_type: value,
-                    student_year:
-                      value === "学生" ? editedProfile.student_year : null,
-                    student_course:
-                      value === "学生" ? editedProfile.student_course : null,
-                  });
-                }}
-                className="w-full p-2 border rounded-md"
-              >
-                <option value="">選択してください</option>
-                <option value="教職員">教職員</option>
-                <option value="学生">学生</option>
-                <option value="その他">その他</option>
-              </select>
-            ) : (
-              <div className="w-full p-2 border rounded-md bg-gray-50">
-                {profile.affiliation_type || "未設定"}
-              </div>
-            )}
+            <input
+              type="email"
+              value={email}
+              disabled
+              className="w-full p-2 border rounded-md bg-gray-50"
+            />
           </div>
-
-          {/* 学生の場合の追加フィールド */}
-          {editedProfile.affiliation_type === "学生" && (
-            <>
-              <div className="mb-6">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  学年
-                </label>
-                {isEditing ? (
-                  <select
-                    value={editedProfile.student_year || ""}
-                    onChange={(e) =>
-                      setEditedProfile({
-                        ...editedProfile,
-                        student_year: parseInt(e.target.value),
-                      })
-                    }
-                    className="w-full p-2 border rounded-md"
-                  >
-                    <option value="">選択してください</option>
-                    {[1, 2, 3, 4, 5].map((year) => (
-                      <option key={year} value={year}>
-                        {year}年生
-                      </option>
-                    ))}
-                  </select>
-                ) : (
-                  <div className="w-full p-2 border rounded-md bg-gray-50">
-                    {profile.student_year
-                      ? `${profile.student_year}年生`
-                      : "未設定"}
-                  </div>
-                )}
-              </div>
-
-              <div className="mb-6">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  コース
-                </label>
-                {isEditing ? (
-                  <select
-                    value={editedProfile.student_course || ""}
-                    onChange={(e) =>
-                      setEditedProfile({
-                        ...editedProfile,
-                        student_course: parseInt(e.target.value),
-                      })
-                    }
-                    className="w-full p-2 border rounded-md"
-                  >
-                    <option value="">選択してください</option>
-                    {COURSE_NAMES.map((course, index) => (
-                      <option key={index} value={index + 1}>
-                        {course}
-                      </option>
-                    ))}
-                  </select>
-                ) : (
-                  <div className="w-full p-2 border rounded-md bg-gray-50">
-                    {profile.student_course
-                      ? COURSE_NAMES[profile.student_course - 1]
-                      : "未設定"}
-                  </div>
-                )}
-              </div>
-            </>
-          )}
 
           <button
             onClick={() => setIsUpdatingEmail(!isUpdatingEmail)}
@@ -505,7 +492,6 @@ export default function AccountPage({ params }: { params: { id: string } }) {
             </div>
           )}
         </div>
-
         {/* パスワード設定 */}
         <div className="bg-white rounded-lg shadow-md p-6 mb-6">
           <h2 className="text-xl font-semibold mb-4">パスワード設定</h2>
@@ -518,13 +504,6 @@ export default function AccountPage({ params }: { params: { id: string } }) {
 
           {isUpdatingPassword && (
             <div className="mt-4">
-              <input
-                type="password"
-                value={currentPassword}
-                onChange={(e) => setCurrentPassword(e.target.value)}
-                placeholder="現在のパスワード"
-                className="w-full p-2 border rounded-md mb-2"
-              />
               <input
                 type="password"
                 value={newPassword}
@@ -549,7 +528,6 @@ export default function AccountPage({ params }: { params: { id: string } }) {
             </div>
           )}
         </div>
-
         {/* アカウント削除 */}
         <div className="bg-white rounded-lg shadow-md p-6">
           <button
@@ -581,7 +559,7 @@ export default function AccountPage({ params }: { params: { id: string } }) {
               </div>
             </div>
           )}
-        </div>
+        </div>{" "}
       </div>
     </div>
   );
