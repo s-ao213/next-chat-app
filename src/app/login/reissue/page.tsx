@@ -12,9 +12,7 @@ export default function PasswordReset() {
     e.preventDefault();
 
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo:
-        // パスワードリセット後
-        "https://next-chat-app-git-main-s-ao213s-projects.vercel.app/login/update-password",
+      redirectTo: `${window.location.origin}/login/update-password`,
     });
 
     if (error) {
