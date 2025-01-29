@@ -14,7 +14,7 @@ export default function PasswordReset() {
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
       redirectTo:
         // パスワードリセット後
-        "https://react-gakusyoku-app.vercel.app/login/update-password",
+        "https://next-chat-app-git-main-s-ao213s-projects.vercel.app/login/update-password",
     });
 
     if (error) {
