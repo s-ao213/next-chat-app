@@ -14,8 +14,8 @@ export default function Home() {
       } = await supabase.auth.getSession();
 
       if (session) {
-        // ログイン済みの場合は注文ページへ
-        router.push("/orders");
+        // ログイン済みの場合はchatへ
+        router.push("/chat");
       } else {
         // 未ログインの場合はログインページへ
         router.push("/login");

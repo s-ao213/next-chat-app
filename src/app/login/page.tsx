@@ -23,7 +23,7 @@ export default function Login() {
       return;
     }
 
-    router.push("/orders");
+    router.push("/chat");
   };
 
   return (

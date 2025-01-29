@@ -21,12 +21,6 @@ const Header = () => {
       </div>
       <div className="flex items-center space-x-4">
         <div
-          onClick={() => router.push("/orders/cart")}
-          className="cursor-pointer hover:text-blue-600 transition-colors"
-        >
-          <ShoppingCart size={24} />
-        </div>
-        <div
           onClick={() => router.push("/user")}
           className="cursor-pointer hover:text-blue-600 transition-colors"
         >

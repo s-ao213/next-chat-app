@@ -393,7 +393,9 @@ export default function AccountPage({ params }: { params: { id: string } }) {
                     src={editedProfile.avatar_url}
                     alt="Profile Avatar"
                     fill
+                    sizes="(max-width: 768px) 96px, 96px"
                     className="object-cover"
+                    priority
                   />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center bg-gray-200">
