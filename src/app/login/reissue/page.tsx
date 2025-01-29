@@ -12,7 +12,7 @@ export default function PasswordReset() {
     e.preventDefault();
 
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/login/update-password`,
+      redirectTo: `${window.location.origin}/login/update-password#access_token={ACCESS_TOKEN}`,
     });
 
     if (error) {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { useRouter } from "next/navigation";
 
@@ -8,6 +8,21 @@ export default function UpdatePassword() {
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const router = useRouter();
+
+  useEffect(() => {
+    // URLからハッシュパラメータを取得
+    const hashParams = new URLSearchParams(window.location.hash.substring(1));
+    const accessToken = hashParams.get("access_token");
+    const refreshToken = hashParams.get("refresh_token");
+
+    if (accessToken) {
+      // セッションを設定
+      supabase.auth.setSession({
+        access_token: accessToken,
+        refresh_token: refreshToken || "",
+      });
+    }
+  }, []);
 
   const handlePasswordUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -17,15 +32,19 @@ export default function UpdatePassword() {
       return;
     }
 
-    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    try {
+      const { error } = await supabase.auth.updateUser({
+        password: newPassword,
+      });
 
-    if (error) {
-      alert("パスワード更新に失敗しました: " + error.message);
-      return;
+      if (error) throw error;
+
+      alert("パスワードが正常に更新されました");
+      router.push("/login");
+    } catch (error: any) {
+      console.error("Password update error:", error);
+      alert(`パスワード更新に失敗しました: ${error.message}`);
     }
-
-    alert("パスワードが正常に更新されました");
-    router.push("/login");
   };
 
   return (
