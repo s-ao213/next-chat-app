@@ -1,78 +1,31 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { useRouter } from "next/navigation";
 
 export default function UpdatePassword() {
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [isSessionSet, setIsSessionSet] = useState(false);
   const router = useRouter();
-
-  useEffect(() => {
-    const setupSession = async () => {
-      // URLからハッシュパラメータを取得
-      const hashParams = new URLSearchParams(window.location.hash.substring(1));
-      const accessToken = hashParams.get("access_token");
-      const refreshToken = hashParams.get("refresh_token");
-
-      if (accessToken) {
-        try {
-          const { data, error } = await supabase.auth.setSession({
-            access_token: accessToken,
-            refresh_token: refreshToken || "",
-          });
-
-          if (error) {
-            console.error("Session setup error:", error);
-            alert("セッションの設定に失敗しました");
-            router.push("/login");
-            return;
-          }
-
-          setIsSessionSet(true);
-        } catch (error) {
-          console.error("Session setup error:", error);
-          alert("セッションの設定に失敗しました");
-          router.push("/login");
-        }
-      } else {
-        console.error("No access token found in URL");
-        alert("認証情報が見つかりません");
-        router.push("/login");
-      }
-    };
-
-    setupSession();
-  }, [router]);
 
   const handlePasswordUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
-
-    if (!isSessionSet) {
-      alert("セッションが設定されていません。もう一度お試しください。");
-      return;
-    }
 
     if (newPassword !== confirmPassword) {
       alert("パスワードが一致しません");
       return;
     }
 
-    try {
-      const { error } = await supabase.auth.updateUser({
-        password: newPassword,
-      });
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
 
-      if (error) throw error;
-
-      alert("パスワードが正常に更新されました");
-      router.push("/login");
-    } catch (error: any) {
-      console.error("Password update error:", error);
-      alert(`パスワード更新に失敗しました: ${error.message}`);
+    if (error) {
+      alert("パスワード更新に失敗しました: " + error.message);
+      return;
     }
+
+    alert("パスワードが正常に更新されました");
+    router.push("/login");
   };
 
   return (
@@ -103,7 +56,6 @@ export default function UpdatePassword() {
         <button
           type="submit"
           className="w-full bg-blue-500 text-white p-2 rounded hover:bg-blue-600"
-          disabled={!isSessionSet}
         >
           パスワードを更新
         </button>

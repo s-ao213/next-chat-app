@@ -11,25 +11,18 @@ export default function PasswordReset() {
   const handlePasswordResetRequest = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    try {
-      // リダイレクトURLを修正
-      const { data, error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: `${window.location.origin}/login/update-password`,
-      });
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo:
+        "https://next-chat-app-git-main-s-ao213s-projects.vercel.app/login/update-password",
+    });
 
-      if (error) {
-        console.error("Password reset error:", error);
-        alert("パスワードリセットに失敗しました: " + error.message);
-        return;
-      }
-
-      console.log("Password reset requested successfully", data);
-      alert("パスワードリセット用のメールを送信しました");
-      router.push("/login");
-    } catch (error: any) {
-      console.error("Password reset error:", error);
+    if (error) {
       alert("パスワードリセットに失敗しました: " + error.message);
+      return;
     }
+
+    alert("パスワードリセット用のメールを送信しました");
+    router.push("/login");
   };
 
   return (
