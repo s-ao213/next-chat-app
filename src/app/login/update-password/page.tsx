@@ -29,7 +29,7 @@ export default function UpdatePassword() {
           alert(
             "セッションの設定に失敗しました。もう一度パスワードリセットを行ってください。"
           );
-          router.push("/password-reset");
+          router.push("/password-update");
         }
       }
       setLoading(false);
