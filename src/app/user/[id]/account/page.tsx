@@ -6,7 +6,7 @@ import { supabase } from "@/lib/supabaseClient";
 import Header from "@/app/_components/Header";
 import { Pencil, Save, X, AlertTriangle, Upload, User } from "lucide-react";
 import Image from "next/image";
-import { UserProfile } from "@/app/_types/courses";
+import { UserProfile } from "@/app/_types/user";
 
 export default function AccountPage({ params }: { params: { id: string } }) {
   const router = useRouter();
