@@ -6,23 +6,41 @@ import { useRouter } from "next/navigation";
 
 export default function PasswordReset() {
   const [email, setEmail] = useState("");
+  const [loading, setLoading] = useState(false);
   const router = useRouter();
 
   const handlePasswordResetRequest = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo:
-        "https://next-chat-app-rouge.vercel.app/login/update-password",
-    });
+    if (loading) return; // 二重送信防止
+    setLoading(true);
 
-    if (error) {
-      alert("パスワードリセットに失敗しました: " + error.message);
-      return;
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo:
+          process.env.NEXT_PUBLIC_AUTH_REDIRECT_URL ||
+          "https://next-chat-app-rouge.vercel.app/login/update-password",
+      });
+
+      if (error) {
+        if (error.status === 429) {
+          alert("しばらく時間をおいてから再度お試しください。");
+        } else {
+          alert("パスワードリセットに失敗しました: " + error.message);
+        }
+        return;
+      }
+
+      alert("パスワードリセット用のメールを送信しました");
+      router.push("/login");
+    } catch (error) {
+      alert("エラーが発生しました。もう一度お試しください。");
+    } finally {
+      // 5秒後にボタンを再度有効化
+      setTimeout(() => {
+        setLoading(false);
+      }, 5000);
     }
-
-    alert("パスワードリセット用のメールを送信しました");
-    router.push("/login");
   };
 
   return (
@@ -42,12 +60,14 @@ export default function PasswordReset() {
           onChange={(e) => setEmail(e.target.value)}
           className="w-full p-2 mb-4 border rounded"
           required
+          disabled={loading}
         />
         <button
           type="submit"
-          className="w-full bg-blue-500 text-white p-2 rounded hover:bg-blue-600"
+          className="w-full bg-blue-500 text-white p-2 rounded hover:bg-blue-600 disabled:bg-gray-400"
+          disabled={loading}
         >
-          パスワードリセットメールを送信
+          {loading ? "送信中..." : "パスワードリセットメールを送信"}
         </button>
       </form>
     </div>
