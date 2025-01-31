@@ -15,17 +15,38 @@ import {
   DialogTrigger,
   DialogDescription,
 } from "../_components/ui/Dialog";
-import { PlusCircle, Trash2, Edit, Link } from "lucide-react";
+import { PlusCircle, Trash2, Edit, Link, UserPlus } from "lucide-react";
 
 export default function ChatRoomList() {
   const [rooms, setRooms] = useState<ChatRoom[]>([]);
   const [selectedRoom, setSelectedRoom] = useState<ChatRoom | null>(null);
   const [newName, setNewName] = useState("");
   const router = useRouter();
+  const [inviteCode, setInviteCode] = useState("");
 
-  useEffect(() => {
-    loadRooms();
-  }, []);
+  const handleJoinRoom = async () => {
+    if (!inviteCode.trim()) return;
+
+    // URLから招待コードを抽出するロジック
+    let code = inviteCode.trim();
+
+    // URLの場合は最後のセグメントを取得
+    if (code.includes("/")) {
+      code = code.split("/").filter(Boolean).pop() || "";
+    }
+
+    // クエリパラメータを含む場合は除去
+    code = code.split("?")[0];
+
+    if (!code) {
+      alert("有効な招待コードを入力してください");
+      return;
+    }
+
+    console.log("Joining room with code:", code); // デバッグ用
+    router.push(`/chat/join/${code}`);
+    setInviteCode(""); // 入力をクリア
+  };
 
   // loadRooms関数を修正
   const loadRooms = async () => {
@@ -116,10 +137,44 @@ export default function ChatRoomList() {
       <div className="max-w-4xl mx-auto p-4">
         <div className="flex justify-between items-center mb-6">
           <h1 className="text-2xl font-bold">トークルーム一覧</h1>
-          <Button onClick={() => router.push("/chat/new")}>
-            <PlusCircle className="mr-2" />
-            新規作成
-          </Button>
+          <div className="flex space-x-2">
+            <Dialog>
+              <DialogTrigger asChild>
+                <Button variant="outline">
+                  <UserPlus className="mr-2 h-4 w-4" />
+                  チャットに参加
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>チャットルームに参加</DialogTitle>
+                  <DialogDescription>
+                    招待リンクまたは招待コードを入力してください
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-4">
+                  <input
+                    type="text"
+                    value={inviteCode}
+                    onChange={(e) => setInviteCode(e.target.value)}
+                    placeholder="招待コードを入力"
+                    className="border p-2 rounded w-full"
+                  />
+                  <Button
+                    onClick={handleJoinRoom}
+                    className="w-full"
+                    disabled={!inviteCode.trim()}
+                  >
+                    参加する
+                  </Button>
+                </div>
+              </DialogContent>
+            </Dialog>
+            <Button onClick={() => router.push("/chat/new")}>
+              <PlusCircle className="mr-2" />
+              新規作成
+            </Button>
+          </div>
         </div>
 
         <div className="space-y-4">
