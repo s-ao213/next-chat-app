@@ -41,7 +41,7 @@ export default function ChatRoom() {
     const autoRefreshInterval = setInterval(() => {
       loadMessages();
       loadMembers();
-    }, 500);
+    }, 3000);
 
     // リアルタイムサブスクリプション
     const channel = supabase
