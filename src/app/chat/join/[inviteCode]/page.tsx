@@ -2,74 +2,60 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { Button } from "@/app/_components/ui/Button";
 import Header from "@/app/_components/Header";
 import { supabase } from "@/lib/supabaseClient";
-interface PageProps {
-  params: {
-    inviteCode: string;
-  };
-}
 
-export default function JoinRoom() {
-  // useParamsから直接inviteCodeを取得する代わりに
-  const params = useParams();
-  const inviteCode = params?.inviteCode as string;
+export default function JoinRoom({
+  params,
+}: {
+  params: { inviteCode: string };
+}) {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [roomName, setRoomName] = useState<string | null>(null);
 
   useEffect(() => {
-    if (inviteCode) {
+    if (params.inviteCode) {
       checkAndJoinRoom();
     }
-  }, [inviteCode]);
+  }, [params.inviteCode]);
 
   const checkAndJoinRoom = async () => {
     try {
       setIsLoading(true);
       setError(null);
 
-      // ユーザー認証の確認
+      // 1. ユーザー確認
       const {
         data: { user },
         error: authError,
       } = await supabase.auth.getUser();
-      if (authError) throw authError;
-      if (!user) {
+      if (authError || !user) {
         setError("サインインが必要です");
         return;
       }
 
-      console.log("Checking invite code:", inviteCode); // デバッグ用
-
-      // ルームの存在確認
+      // 2. ルーム確認
       const { data: room, error: roomError } = await supabase
         .from("chat_rooms")
         .select("id, name")
-        .eq("invite_code", inviteCode)
+        .eq("invite_code", params.inviteCode)
         .single();
 
-      if (roomError) {
-        console.error("Room error:", roomError); // デバッグ用
+      if (roomError || !room) {
         setError("無効な招待コードです");
         return;
       }
 
-      if (!room) {
-        setError("無効な招待コードです");
-        return;
-      }
-
-      console.log("Found room:", room); // デバッグ用
       setRoomName(room.name);
 
-      // すでにメンバーかどうかを確認
-      const { data: existingMember, error: memberCheckError } = await supabase
+      // 3. メンバーシップ確認
+      const { data: existingMember } = await supabase
         .from("chat_room_members")
-        .select("*")
+        .select()
         .eq("room_id", room.id)
         .eq("user_id", user.id)
         .single();
@@ -79,7 +65,7 @@ export default function JoinRoom() {
         return;
       }
 
-      // メンバーとして追加
+      // 4. メンバー追加
       const { error: joinError } = await supabase
         .from("chat_room_members")
         .insert([
@@ -91,11 +77,10 @@ export default function JoinRoom() {
 
       if (joinError) throw joinError;
 
-      // 参加成功後、ルームページへリダイレクト
       router.push(`/chat/${room.id}`);
     } catch (error) {
-      console.error("Error joining room:", error);
-      setError("エラーが発生しました。もう一度お試しください。");
+      console.error("Error:", error);
+      setError("エラーが発生しました");
     } finally {
       setIsLoading(false);
     }

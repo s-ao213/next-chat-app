@@ -21,8 +21,16 @@ export default function ChatRoomList() {
   const [rooms, setRooms] = useState<ChatRoom[]>([]);
   const [selectedRoom, setSelectedRoom] = useState<ChatRoom | null>(null);
   const [newName, setNewName] = useState("");
-  const router = useRouter();
   const [inviteCode, setInviteCode] = useState("");
+  const router = useRouter();
+
+  // useEffectを修正
+  useEffect(() => {
+    const loadInitialData = async () => {
+      await loadRooms();
+    };
+    loadInitialData();
+  }, []);
 
   const handleJoinRoom = async () => {
     if (!inviteCode.trim()) return;
@@ -53,31 +61,50 @@ export default function ChatRoomList() {
     try {
       const {
         data: { user },
+        error: userError,
       } = await supabase.auth.getUser();
-      if (!user) return;
-
-      const { data, error } = await supabase
-        .from("chat_rooms")
-        .select(
-          `
-        *,
-        chat_room_members!inner(user_id)
-      `
-        )
-        .eq("chat_room_members.user_id", user.id)
-        .order("created_at", { ascending: false });
-
-      if (error) {
-        console.error("Error loading rooms:", error);
+      if (userError || !user) {
+        console.error("User error:", userError);
         return;
       }
 
-      setRooms(data || []);
+      // ユーザーが参加しているルームを取得
+      const { data: memberData, error: memberError } = await supabase
+        .from("chat_room_members")
+        .select("room_id")
+        .eq("user_id", user.id);
+
+      if (memberError) {
+        console.error("Member error:", memberError);
+        return;
+      }
+
+      // ルームIDの配列を作成
+      const roomIds = memberData.map((member) => member.room_id);
+
+      if (roomIds.length === 0) {
+        setRooms([]);
+        return;
+      }
+
+      // ルーム情報を取得
+      const { data: roomData, error: roomError } = await supabase
+        .from("chat_rooms")
+        .select("*")
+        .in("id", roomIds)
+        .order("created_at", { ascending: false });
+
+      if (roomError) {
+        console.error("Room error:", roomError);
+        return;
+      }
+
+      console.log("Loaded rooms:", roomData); // デバッグ用
+      setRooms(roomData || []);
     } catch (error) {
-      console.error("Error:", error);
+      console.error("Error in loadRooms:", error);
     }
   };
-
   const leaveRoom = async (roomId: string) => {
     try {
       // 現在のユーザーを取得
