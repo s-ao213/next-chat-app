@@ -6,7 +6,7 @@ import { Button } from "../../_components/ui/Button";
 import Header from "../../_components/Header";
 import { supabase } from "@/lib/supabaseClient";
 import type { Message, ChatRoom, ChatRoomMember } from "../../_types/chat";
-import { Send, Users } from "lucide-react";
+import { Send, Users, ArrowDown, Bell } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -23,10 +23,20 @@ export default function ChatRoom() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState("");
   const [currentUser, setCurrentUser] = useState<string | null>(null);
+  const [shouldAutoScroll, setShouldAutoScroll] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const [unreadCount, setUnreadCount] = useState(0);
 
+  // スクロールを処理する関数
+  const scrollToBottom = () => {
+    if (shouldAutoScroll) {
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+  };
+
+  // 初期化用のuseEffect（最初のページ読み込み時の処理）
   useEffect(() => {
-    // 初期データの読み込み
     const initialize = async () => {
       const {
         data: { user },
@@ -36,14 +46,9 @@ export default function ChatRoom() {
     };
 
     initialize();
+  }, [id]); // idが変更されたときにも再読み込み
 
-    // 3秒ごとの自動更新
-    const autoRefreshInterval = setInterval(() => {
-      loadMessages();
-      loadMembers();
-    }, 3000);
-
-    // リアルタイムサブスクリプション
+  useEffect(() => {
     const channel = supabase
       .channel(`room-${id}`)
       .on(
@@ -78,17 +83,50 @@ export default function ChatRoom() {
                 user: newMessage.users,
               },
             ]);
-            messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+
+            // 自分のメッセージでない場合、かつ画面下部を見ていない場合
+            if (newMessage.user_id !== currentUser && !shouldAutoScroll) {
+              setUnreadCount((prev) => prev + 1);
+            }
+
+            if (newMessage.user_id === currentUser || shouldAutoScroll) {
+              scrollToBottom();
+            }
           }
         }
       )
       .subscribe();
 
-    // クリーンアップ
     return () => {
-      clearInterval(autoRefreshInterval);
       channel.unsubscribe();
     };
+  }, [id, currentUser, shouldAutoScroll]);
+
+  // スクロールイベントのハンドラを追加
+  useEffect(() => {
+    const container = messagesContainerRef.current;
+    if (!container) return;
+
+    const handleScroll = () => {
+      const { scrollTop, scrollHeight, clientHeight } = container;
+      const isNearBottom = scrollHeight - (scrollTop + clientHeight) < 100;
+      setShouldAutoScroll(isNearBottom);
+      if (isNearBottom) {
+        setUnreadCount(0);
+      }
+    };
+
+    container.addEventListener("scroll", handleScroll);
+    return () => container.removeEventListener("scroll", handleScroll);
+  }, []);
+
+  // 3秒ごとの自動更新を追加
+  useEffect(() => {
+    const interval = setInterval(() => {
+      loadMessages(false); // falseを渡してスクロールを制御
+    }, 3000);
+
+    return () => clearInterval(interval);
   }, [id]);
 
   const loadRoom = async () => {
@@ -130,18 +168,18 @@ export default function ChatRoom() {
     );
   };
 
-  const loadMessages = async () => {
+  const loadMessages = async (shouldScroll = true) => {
     const { data, error } = await supabase
       .from("messages")
       .select(
         `
-        *,
-        users!user_id (
-          id,
-          name,
-          avatar_url
-        )
-      `
+      *,
+      users!user_id (
+        id,
+        name,
+        avatar_url
+      )
+    `
       )
       .eq("room_id", id)
       .order("created_at", { ascending: true });
@@ -151,16 +189,17 @@ export default function ChatRoom() {
       return;
     }
 
-    const newMessages =
+    setMessages(
       data?.map((message) => ({
         ...message,
         user: message.users,
-      })) || [];
+      })) || []
+    );
 
-    // メッセージが変更されている場合のみ更新
-    if (JSON.stringify(messages) !== JSON.stringify(newMessages)) {
-      setMessages(newMessages);
-      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (shouldScroll) {
+      setTimeout(() => {
+        scrollToBottom();
+      }, 100);
     }
   };
 
@@ -179,9 +218,7 @@ export default function ChatRoom() {
 
       if (error) throw error;
       setNewMessage("");
-
-      // 送信後に最新メッセージを読み込み
-      await loadMessages();
+      setShouldAutoScroll(true); // 自分のメッセージを送信したら自動スクロールを有効に
     } catch (error) {
       console.error("Error sending message:", error);
     }
@@ -200,7 +237,14 @@ export default function ChatRoom() {
                 className="w-10 h-10 rounded-full"
               />
             )}
-            <h1 className="text-xl font-bold">{room?.name}</h1>
+            <div className="flex items-center gap-2">
+              <h1 className="text-xl font-bold">{room?.name}</h1>
+              {!shouldAutoScroll && unreadCount > 0 && (
+                <span className="inline-flex items-center justify-center bg-red-500 text-white text-xs px-2 py-1 rounded-full animate-pulse">
+                  {unreadCount}
+                </span>
+              )}
+            </div>
           </div>
 
           <Dialog>
@@ -237,49 +281,86 @@ export default function ChatRoom() {
           </Dialog>
         </div>
 
-        <div className="bg-white h-[60vh] overflow-y-auto p-4">
-          <div className="space-y-4">
-            {messages.map((message) => {
-              const isCurrentUser = message.user_id === currentUser;
-              return (
-                <div
-                  key={message.id}
-                  className={`flex ${isCurrentUser ? "justify-end" : "justify-start"}`}
-                >
+        <div className="relative">
+          <div
+            className="bg-white h-[60vh] overflow-y-auto p-4"
+            ref={messagesContainerRef}
+          >
+            <div className="space-y-4">
+              {messages.map((message, index) => {
+                const isCurrentUser = message.user_id === currentUser;
+                const isLastMessage = index === messages.length - 1;
+                const messageTime = new Date(
+                  message.created_at
+                ).toLocaleTimeString("ja-JP", {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                });
+
+                return (
                   <div
-                    className={`flex ${isCurrentUser ? "flex-row-reverse" : "flex-row"} items-end space-x-2`}
+                    key={message.id}
+                    className={`flex ${isCurrentUser ? "justify-end" : "justify-start"} ${
+                      isLastMessage ? "animate-fade-in-highlight" : ""
+                    } transition-all duration-300 ease-out`}
                   >
-                    {!isCurrentUser && message.user.avatar_url && (
-                      <img
-                        src={message.user.avatar_url}
-                        alt=""
-                        className="w-8 h-8 rounded-full"
-                      />
-                    )}
                     <div
-                      className={`max-w-xs space-y-1 ${isCurrentUser ? "mr-2" : "ml-2"}`}
+                      className={`flex ${
+                        isCurrentUser ? "flex-row-reverse" : "flex-row"
+                      } items-end gap-2`}
                     >
-                      {!isCurrentUser && (
-                        <div className="text-sm text-gray-600">
-                          {message.user.name}
-                        </div>
+                      {!isCurrentUser && message.user.avatar_url && (
+                        <img
+                          src={message.user.avatar_url}
+                          alt=""
+                          className="w-8 h-8 rounded-full flex-shrink-0"
+                        />
                       )}
                       <div
-                        className={`rounded-lg p-3 ${
-                          isCurrentUser
-                            ? "bg-blue-500 text-white"
-                            : "bg-gray-100 text-gray-900"
-                        }`}
+                        className={`flex flex-col ${isCurrentUser ? "items-end mr-2" : "items-start ml-2"}`}
                       >
-                        {message.content}
+                        {!isCurrentUser && (
+                          <div className="text-sm text-gray-600 mb-1">
+                            {message.user.name}
+                          </div>
+                        )}
+                        <div className="flex items-end gap-2">
+                          {!isCurrentUser && <div className="w-2" />}
+                          <div
+                            className={`rounded-lg p-3 ${
+                              isCurrentUser
+                                ? "bg-blue-500 text-white"
+                                : "bg-gray-100 text-gray-900"
+                            } max-w-sm break-words`}
+                          >
+                            {message.content}
+                          </div>
+                          <div className="text-xs text-gray-500 min-w-[4em]">
+                            {messageTime}
+                          </div>
+                        </div>
                       </div>
                     </div>
                   </div>
-                </div>
-              );
-            })}
-            <div ref={messagesEndRef} />
+                );
+              })}
+              <div ref={messagesEndRef} />
+            </div>
           </div>
+
+          {/* 新着メッセージ通知 */}
+          {!shouldAutoScroll && unreadCount > 0 && (
+            <div className="absolute bottom-4 right-4 z-10">
+              <button
+                onClick={scrollToBottom}
+                className="bg-blue-500 text-white px-4 py-2 rounded-full shadow-lg flex items-center space-x-2 hover:bg-blue-600 transition-colors animate-bounce shadow-lg hover:shadow-xl"
+              >
+                <Bell className="h-4 w-4" />
+                <span className="mx-1">{unreadCount}件の新着メッセージ</span>
+                <ArrowDown className="h-4 w-4 animate-bounce" />
+              </button>
+            </div>
+          )}
         </div>
 
         <form
