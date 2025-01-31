@@ -25,11 +25,24 @@ export default function ChatRoomList() {
   const router = useRouter();
 
   // useEffectを修正
+  //chat/page.tsx のuseEffect部分を修正
+
   useEffect(() => {
+    // 初回読み込み
     const loadInitialData = async () => {
       await loadRooms();
     };
     loadInitialData();
+
+    // 3秒ごとに自動更新
+    const intervalId = setInterval(() => {
+      loadRooms();
+    }, 3000); // 3000ミリ秒 = 3秒
+
+    // クリーンアップ関数（コンポーネントがアンマウントされたときに実行）
+    return () => {
+      clearInterval(intervalId);
+    };
   }, []);
 
   const handleJoinRoom = async () => {
