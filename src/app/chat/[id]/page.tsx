@@ -32,42 +32,45 @@ export default function ChatRoom() {
         data: { user },
       } = await supabase.auth.getUser();
       setCurrentUser(user?.id || null);
-
       await Promise.all([loadRoom(), loadMembers(), loadMessages()]);
     };
 
     initialize();
 
-    // リアルタイムサブスクリプションのセットアップ
-    const channel = supabase.channel(`room-${id}`).on(
-      "postgres_changes",
-      {
-        event: "*",
-        schema: "public",
-        table: "messages",
-        filter: `room_id=eq.${id}`,
-      },
-      async (payload) => {
-        console.log("Realtime update received:", payload);
+    // 3秒ごとの自動更新
+    const autoRefreshInterval = setInterval(() => {
+      loadMessages();
+      loadMembers();
+    }, 3000);
 
-        if (payload.eventType === "INSERT") {
+    // リアルタイムサブスクリプション
+    const channel = supabase
+      .channel(`room-${id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "messages",
+          filter: `room_id=eq.${id}`,
+        },
+        async (payload) => {
           const { data: newMessage, error } = await supabase
             .from("messages")
             .select(
               `
-                *,
-                users!user_id (
-                  id,
-                  name,
-                  avatar_url
-                )
-              `
+              *,
+              users!user_id (
+                id,
+                name,
+                avatar_url
+              )
+            `
             )
             .eq("id", payload.new.id)
             .single();
 
           if (!error && newMessage) {
-            console.log("New message with user data:", newMessage);
             setMessages((prev) => [
               ...prev,
               {
@@ -78,19 +81,12 @@ export default function ChatRoom() {
             messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
           }
         }
-      }
-    );
+      )
+      .subscribe();
 
-    // チャンネルの接続を開始
-    channel.subscribe((status) => {
-      if (status === "SUBSCRIBED") {
-        console.log("Subscribed to room:", id);
-      }
-    });
-
-    // クリーンアップ関数
+    // クリーンアップ
     return () => {
-      console.log("Unsubscribing from room:", id);
+      clearInterval(autoRefreshInterval);
       channel.unsubscribe();
     };
   }, [id]);
@@ -155,17 +151,19 @@ export default function ChatRoom() {
       return;
     }
 
-    setMessages(
+    const newMessages =
       data?.map((message) => ({
         ...message,
         user: message.users,
-      })) || []
-    );
+      })) || [];
 
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    // メッセージが変更されている場合のみ更新
+    if (JSON.stringify(messages) !== JSON.stringify(newMessages)) {
+      setMessages(newMessages);
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
   };
 
-  // sendMessage関数を修正
   const sendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newMessage.trim() || !currentUser) return;
@@ -182,40 +180,17 @@ export default function ChatRoom() {
       if (error) throw error;
       setNewMessage("");
 
-      // メッセージ送信後に最新のメッセージを読み込み
-      const { data, error: loadError } = await supabase
-        .from("messages")
-        .select(
-          `
-        *,
-        users!user_id (
-          id,
-          name,
-          avatar_url
-        )
-      `
-        )
-        .eq("room_id", id)
-        .order("created_at", { ascending: true });
-
-      if (!loadError && data) {
-        setMessages(
-          data.map((message) => ({
-            ...message,
-            user: message.users,
-          }))
-        );
-        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-      }
+      // 送信後に最新メッセージを読み込み
+      await loadMessages();
     } catch (error) {
       console.error("Error sending message:", error);
     }
   };
+
   return (
     <div className="min-h-screen bg-gray-100">
       <Header />
       <div className="max-w-4xl mx-auto p-4">
-        {/* チャットルームヘッダー */}
         <div className="bg-white p-4 rounded-t-lg shadow flex justify-between items-center">
           <div className="flex items-center space-x-4">
             {room?.icon_url && (
@@ -262,7 +237,6 @@ export default function ChatRoom() {
           </Dialog>
         </div>
 
-        {/* メッセージ一覧 */}
         <div className="bg-white h-[60vh] overflow-y-auto p-4">
           <div className="space-y-4">
             {messages.map((message) => {
@@ -273,9 +247,7 @@ export default function ChatRoom() {
                   className={`flex ${isCurrentUser ? "justify-end" : "justify-start"}`}
                 >
                   <div
-                    className={`flex ${
-                      isCurrentUser ? "flex-row-reverse" : "flex-row"
-                    } items-end space-x-2`}
+                    className={`flex ${isCurrentUser ? "flex-row-reverse" : "flex-row"} items-end space-x-2`}
                   >
                     {!isCurrentUser && message.user.avatar_url && (
                       <img
@@ -285,9 +257,7 @@ export default function ChatRoom() {
                       />
                     )}
                     <div
-                      className={`max-w-xs space-y-1 ${
-                        isCurrentUser ? "mr-2" : "ml-2"
-                      }`}
+                      className={`max-w-xs space-y-1 ${isCurrentUser ? "mr-2" : "ml-2"}`}
                     >
                       {!isCurrentUser && (
                         <div className="text-sm text-gray-600">
@@ -312,7 +282,6 @@ export default function ChatRoom() {
           </div>
         </div>
 
-        {/* メッセージ入力フォーム */}
         <form
           onSubmit={sendMessage}
           className="bg-white p-4 rounded-b-lg shadow"
