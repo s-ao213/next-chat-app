@@ -30,9 +30,7 @@ export default function ChatRoom() {
 
   // スクロールを処理する関数
   const scrollToBottom = () => {
-    if (shouldAutoScroll) {
-      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-    }
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
   // 初期化用のuseEffect（最初のページ読み込み時の処理）
@@ -60,10 +58,21 @@ export default function ChatRoom() {
           filter: `room_id=eq.${id}`,
         },
         async (payload) => {
-          const { data: newMessage, error } = await supabase
+          // メッセージ数をチェック
+          const { count } = await supabase
             .from("messages")
-            .select(
-              `
+            .select("*", { count: "exact" })
+            .eq("room_id", id);
+
+          if (count && count > 30) {
+            // 30件より古いメッセージを削除して再読み込み
+            await loadMessages(true);
+          } else {
+            // 通常の新規メッセージ追加
+            const { data: newMessage, error } = await supabase
+              .from("messages")
+              .select(
+                `
               *,
               users!user_id (
                 id,
@@ -71,26 +80,21 @@ export default function ChatRoom() {
                 avatar_url
               )
             `
-            )
-            .eq("id", payload.new.id)
-            .single();
+              )
+              .eq("id", payload.new.id)
+              .single();
 
-          if (!error && newMessage) {
-            setMessages((prev) => [
-              ...prev,
-              {
-                ...newMessage,
-                user: newMessage.users,
-              },
-            ]);
-
-            // 自分のメッセージでない場合、かつ画面下部を見ていない場合
-            if (newMessage.user_id !== currentUser && !shouldAutoScroll) {
-              setUnreadCount((prev) => prev + 1);
-            }
-
-            if (newMessage.user_id === currentUser || shouldAutoScroll) {
-              scrollToBottom();
+            if (!error && newMessage) {
+              setMessages((prev) => [
+                ...prev,
+                {
+                  ...newMessage,
+                  user: newMessage.users,
+                },
+              ]);
+              setTimeout(() => {
+                messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+              }, 100);
             }
           }
         }
@@ -100,7 +104,7 @@ export default function ChatRoom() {
     return () => {
       channel.unsubscribe();
     };
-  }, [id, currentUser, shouldAutoScroll]);
+  }, [id]);
 
   // スクロールイベントのハンドラを追加
   useEffect(() => {
@@ -123,8 +127,8 @@ export default function ChatRoom() {
   // 3秒ごとの自動更新を追加
   useEffect(() => {
     const interval = setInterval(() => {
-      loadMessages(false); // falseを渡してスクロールを制御
-    }, 3000);
+      loadMessages(false);
+    }, 1000);
 
     return () => clearInterval(interval);
   }, [id]);
@@ -169,37 +173,70 @@ export default function ChatRoom() {
   };
 
   const loadMessages = async (shouldScroll = true) => {
-    const { data, error } = await supabase
-      .from("messages")
-      .select(
-        `
-      *,
-      users!user_id (
-        id,
-        name,
-        avatar_url
-      )
-    `
-      )
-      .eq("room_id", id)
-      .order("created_at", { ascending: true });
+    try {
+      // 最新30件のメッセージのみを取得
+      const { data, error } = await supabase
+        .from("messages")
+        .select(
+          `
+        *,
+        users!user_id (
+          id,
+          name,
+          avatar_url
+        )
+      `
+        )
+        .eq("room_id", id)
+        .order("created_at", { ascending: false }) // 降順で取得
+        .limit(30); // 30件に制限
 
-    if (error) {
-      console.error("Error loading messages:", error);
-      return;
-    }
+      if (error) {
+        console.error("Error loading messages:", error);
+        return;
+      }
 
-    setMessages(
-      data?.map((message) => ({
-        ...message,
-        user: message.users,
-      })) || []
-    );
+      // 古いメッセージを取得して削除
+      const { count, error: countError } = await supabase
+        .from("messages")
+        .select("*", { count: "exact" })
+        .eq("room_id", id);
 
-    if (shouldScroll) {
-      setTimeout(() => {
-        scrollToBottom();
-      }, 100);
+      if (!countError && count && count > 30) {
+        // 30件より古いメッセージを全て削除
+        const { data: oldMessages } = await supabase
+          .from("messages")
+          .select("id, created_at")
+          .eq("room_id", id)
+          .order("created_at", { ascending: true })
+          .limit(count - 30);
+
+        if (oldMessages && oldMessages.length > 0) {
+          await supabase
+            .from("messages")
+            .delete()
+            .in(
+              "id",
+              oldMessages.map((m) => m.id)
+            );
+        }
+      }
+
+      // メッセージを昇順に戻して設定
+      setMessages(
+        data?.reverse().map((message) => ({
+          ...message,
+          user: message.users,
+        })) || []
+      );
+
+      if (shouldScroll) {
+        setTimeout(() => {
+          scrollToBottom();
+        }, 100);
+      }
+    } catch (error) {
+      console.error("Error in loadMessages:", error);
     }
   };
 

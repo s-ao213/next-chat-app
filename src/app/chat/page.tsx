@@ -24,9 +24,6 @@ export default function ChatRoomList() {
   const [inviteCode, setInviteCode] = useState("");
   const router = useRouter();
 
-  // useEffectを修正
-  //chat/page.tsx のuseEffect部分を修正
-
   useEffect(() => {
     // 初回読み込み
     const loadInitialData = async () => {
@@ -131,6 +128,17 @@ export default function ChatRoomList() {
         return;
       }
 
+      // まず、そのルームのメンバー数を確認
+      const { count: memberCount, error: memberCountError } = await supabase
+        .from("chat_room_members")
+        .select("*", { count: "exact" })
+        .eq("room_id", roomId);
+
+      if (memberCountError) {
+        console.error("Member count error:", memberCountError);
+        return;
+      }
+
       // メンバーを削除
       const { error: deleteError } = await supabase
         .from("chat_room_members")
@@ -143,6 +151,15 @@ export default function ChatRoomList() {
       if (deleteError) {
         console.error("Delete error:", deleteError);
         return;
+      }
+
+      // もし最後のメンバーであれば、関連するメッセージと部屋を削除
+      if (memberCount === 1) {
+        // メッセージを削除
+        await supabase.from("messages").delete().eq("room_id", roomId);
+
+        // チャットルームを削除
+        await supabase.from("chat_rooms").delete().eq("id", roomId);
       }
 
       // ルーム一覧を再読み込み
