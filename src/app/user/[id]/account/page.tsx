@@ -1,3 +1,4 @@
+// src/app/user/[id]/account/page.tsx
 "use client";
 
 import { useEffect, useState } from "react";
@@ -428,7 +429,7 @@ export default function AccountPage({ params }: { params: { id: string } }) {
           {/* 名前設定 */}
           <div className="mb-6">
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              名前
+              ユーザー名
             </label>
             {isEditing ? (
               <input

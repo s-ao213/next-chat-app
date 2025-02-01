@@ -57,45 +57,48 @@ export default function ChatRoom() {
           table: "messages",
           filter: `room_id=eq.${id}`,
         },
+        // リアルタイム更新の処理内
         async (payload) => {
-          // メッセージ数をチェック
-          const { count } = await supabase
+          // プロファイル情報を取得
+          const { data: profile } = await supabase
+            .from("profiles")
+            .select("name, avatar_url")
+            .eq("id", payload.new.user_id)
+            .single();
+
+          const { data: newMessage, error } = await supabase
             .from("messages")
-            .select("*", { count: "exact" })
-            .eq("room_id", id);
+            .select(
+              `
+      *,
+      users!user_id (
+        id,
+        name,
+        avatar_url
+      )
+    `
+            )
+            .eq("id", payload.new.id)
+            .single();
 
-          if (count && count > 30) {
-            // 30件より古いメッセージを削除して再読み込み
-            await loadMessages(true);
-          } else {
-            // 通常の新規メッセージ追加
-            const { data: newMessage, error } = await supabase
-              .from("messages")
-              .select(
-                `
-              *,
-              users!user_id (
-                id,
-                name,
-                avatar_url
-              )
-            `
-              )
-              .eq("id", payload.new.id)
-              .single();
-
-            if (!error && newMessage) {
-              setMessages((prev) => [
-                ...prev,
-                {
-                  ...newMessage,
-                  user: newMessage.users,
+          if (!error && newMessage) {
+            setMessages((prev) => [
+              ...prev,
+              {
+                ...newMessage,
+                user: {
+                  id: newMessage.user_id,
+                  name:
+                    profile?.name || newMessage.users?.name || "Unknown User",
+                  avatar_url:
+                    profile?.avatar_url || newMessage.users?.avatar_url,
                 },
-              ]);
-              setTimeout(() => {
-                messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-              }, 100);
-            }
+              },
+            ]);
+
+            setTimeout(() => {
+              messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+            }, 100);
           }
         }
       )
@@ -145,10 +148,21 @@ export default function ChatRoom() {
   };
 
   const loadMembers = async () => {
-    const { data, error } = await supabase
-      .from("chat_room_members")
-      .select(
-        `
+    try {
+      // プロファイル情報を含めたメンバー情報を取得
+      const { data: profilesData } = await supabase
+        .from("profiles")
+        .select("id, name, avatar_url");
+
+      // プロファイル情報をマップとして保持
+      const profilesMap = new Map(
+        profilesData?.map((profile) => [profile.id, profile]) || []
+      );
+
+      const { data, error } = await supabase
+        .from("chat_room_members")
+        .select(
+          `
         *,
         users!user_id (
           id,
@@ -156,25 +170,48 @@ export default function ChatRoom() {
           avatar_url
         )
       `
-      )
-      .eq("room_id", id);
+        )
+        .eq("room_id", id);
 
-    if (error) {
-      console.error("Error loading members:", error);
-      return;
+      if (error) {
+        console.error("Error loading members:", error);
+        return;
+      }
+
+      // プロファイル情報を優先してメンバー情報を設定
+      setMembers(
+        data?.map((member) => ({
+          ...member,
+          user: {
+            id: member.user_id,
+            name:
+              profilesMap.get(member.user_id)?.name ||
+              member.users?.name ||
+              "Unknown User",
+            avatar_url:
+              profilesMap.get(member.user_id)?.avatar_url ||
+              member.users?.avatar_url,
+          },
+        })) || []
+      );
+    } catch (error) {
+      console.error("Error in loadMembers:", error);
     }
-
-    setMembers(
-      data?.map((member) => ({
-        ...member,
-        user: member.users,
-      })) || []
-    );
   };
 
   const loadMessages = async (shouldScroll = true) => {
     try {
-      // 最新30件のメッセージのみを取得
+      // プロファイル情報を別途取得
+      const { data: profilesData } = await supabase
+        .from("profiles")
+        .select("id, name, avatar_url");
+
+      // プロファイル情報をマップとして保持
+      const profilesMap = new Map(
+        profilesData?.map((profile) => [profile.id, profile]) || []
+      );
+
+      // メッセージを取得
       const { data, error } = await supabase
         .from("messages")
         .select(
@@ -188,45 +225,28 @@ export default function ChatRoom() {
       `
         )
         .eq("room_id", id)
-        .order("created_at", { ascending: false }) // 降順で取得
-        .limit(30); // 30件に制限
+        .order("created_at", { ascending: false })
+        .limit(30);
 
       if (error) {
         console.error("Error loading messages:", error);
         return;
       }
 
-      // 古いメッセージを取得して削除
-      const { count, error: countError } = await supabase
-        .from("messages")
-        .select("*", { count: "exact" })
-        .eq("room_id", id);
-
-      if (!countError && count && count > 30) {
-        // 30件より古いメッセージを全て削除
-        const { data: oldMessages } = await supabase
-          .from("messages")
-          .select("id, created_at")
-          .eq("room_id", id)
-          .order("created_at", { ascending: true })
-          .limit(count - 30);
-
-        if (oldMessages && oldMessages.length > 0) {
-          await supabase
-            .from("messages")
-            .delete()
-            .in(
-              "id",
-              oldMessages.map((m) => m.id)
-            );
-        }
-      }
-
-      // メッセージを昇順に戻して設定
+      // メッセージを昇順に戻して設定（プロフィール情報があれば優先）
       setMessages(
         data?.reverse().map((message) => ({
           ...message,
-          user: message.users,
+          user: {
+            id: message.user_id,
+            name:
+              profilesMap.get(message.user_id)?.name ||
+              message.users?.name ||
+              "Unknown User",
+            avatar_url:
+              profilesMap.get(message.user_id)?.avatar_url ||
+              message.users?.avatar_url,
+          },
         })) || []
       );
 
@@ -346,19 +366,32 @@ export default function ChatRoom() {
                         isCurrentUser ? "flex-row-reverse" : "flex-row"
                       } items-end gap-2`}
                     >
-                      {!isCurrentUser && message.user.avatar_url && (
-                        <img
-                          src={message.user.avatar_url}
-                          alt=""
-                          className="w-8 h-8 rounded-full flex-shrink-0"
-                        />
+                      {!isCurrentUser && (
+                        <div className="flex-shrink-0">
+                          {message.user.avatar_url ? (
+                            <img
+                              src={message.user.avatar_url}
+                              alt=""
+                              className="w-8 h-8 rounded-full"
+                            />
+                          ) : (
+                            <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center">
+                              <span className="text-gray-500 text-sm">
+                                {message.user.name?.charAt(0).toUpperCase() ||
+                                  "?"}
+                              </span>
+                            </div>
+                          )}
+                        </div>
                       )}
                       <div
-                        className={`flex flex-col ${isCurrentUser ? "items-end mr-2" : "items-start ml-2"}`}
+                        className={`flex flex-col ${
+                          isCurrentUser ? "items-end mr-2" : "items-start ml-2"
+                        }`}
                       >
                         {!isCurrentUser && (
-                          <div className="text-sm text-gray-600 mb-1">
-                            {message.user.name}
+                          <div className="text-sm font-medium text-gray-600 mb-1">
+                            {message.user.name || "Unknown User"}
                           </div>
                         )}
                         <div className="flex items-end gap-2">
