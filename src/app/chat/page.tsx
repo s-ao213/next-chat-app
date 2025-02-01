@@ -15,14 +15,25 @@ import {
   DialogTrigger,
   DialogDescription,
 } from "../_components/ui/Dialog";
-import { PlusCircle, Trash2, Edit, Link, UserPlus } from "lucide-react";
+import {
+  PlusCircle,
+  Trash2,
+  Edit,
+  Link,
+  UserPlus,
+  X,
+  Loader2,
+} from "lucide-react";
+import * as DialogPrimitive from "@radix-ui/react-dialog";
 
 export default function ChatRoomList() {
   const [rooms, setRooms] = useState<ChatRoom[]>([]);
   const [selectedRoom, setSelectedRoom] = useState<ChatRoom | null>(null);
   const [newName, setNewName] = useState("");
   const [inviteCode, setInviteCode] = useState("");
+  const [loadingRoomId, setLoadingRoomId] = useState<string | null>(null);
   const router = useRouter();
+  const [roomToDelete, setRoomToDelete] = useState<string | null>(null);
 
   useEffect(() => {
     // 初回読み込み
@@ -41,6 +52,11 @@ export default function ChatRoomList() {
       clearInterval(intervalId);
     };
   }, []);
+
+  const handleRoomClick = (roomId: string) => {
+    setLoadingRoomId(roomId);
+    router.push(`/chat/${roomId}`);
+  };
 
   const handleJoinRoom = async () => {
     if (!inviteCode.trim()) return;
@@ -66,7 +82,11 @@ export default function ChatRoomList() {
     setInviteCode(""); // 入力をクリア
   };
 
-  // loadRooms関数を修正
+  const handleLeaveRoom = (roomId: string) => {
+    setRoomToDelete(roomId);
+  };
+
+  // loadRooms関数
   const loadRooms = async () => {
     try {
       const {
@@ -115,7 +135,9 @@ export default function ChatRoomList() {
       console.error("Error in loadRooms:", error);
     }
   };
-  const leaveRoom = async (roomId: string) => {
+  const confirmLeaveRoom = async () => {
+    if (!roomToDelete) return;
+
     try {
       // 現在のユーザーを取得
       const {
@@ -132,7 +154,7 @@ export default function ChatRoomList() {
       const { count: memberCount, error: memberCountError } = await supabase
         .from("chat_room_members")
         .select("*", { count: "exact" })
-        .eq("room_id", roomId);
+        .eq("room_id", roomToDelete);
 
       if (memberCountError) {
         console.error("Member count error:", memberCountError);
@@ -144,7 +166,7 @@ export default function ChatRoomList() {
         .from("chat_room_members")
         .delete()
         .match({
-          room_id: roomId,
+          room_id: roomToDelete,
           user_id: user.id,
         });
 
@@ -156,19 +178,21 @@ export default function ChatRoomList() {
       // もし最後のメンバーであれば、関連するメッセージと部屋を削除
       if (memberCount === 1) {
         // メッセージを削除
-        await supabase.from("messages").delete().eq("room_id", roomId);
+        await supabase.from("messages").delete().eq("room_id", roomToDelete);
 
         // チャットルームを削除
-        await supabase.from("chat_rooms").delete().eq("id", roomId);
+        await supabase.from("chat_rooms").delete().eq("id", roomToDelete);
       }
 
       // ルーム一覧を再読み込み
       await loadRooms();
+
+      // ダイアログを閉じる
+      setRoomToDelete(null);
     } catch (error) {
       console.error("Error leaving room:", error);
     }
   };
-
   const updateRoomName = async (roomId: string, newName: string) => {
     const { error } = await supabase
       .from("chat_rooms")
@@ -241,8 +265,8 @@ export default function ChatRoomList() {
               className="bg-white p-4 rounded-lg shadow flex justify-between items-center"
             >
               <div
-                className="flex items-center space-x-4"
-                onClick={() => router.push(`/chat/${room.id}`)}
+                className="flex items-center space-x-4 cursor-pointer"
+                onClick={() => handleRoomClick(room.id)}
               >
                 {room.icon_url && (
                   <img
@@ -251,7 +275,12 @@ export default function ChatRoomList() {
                     className="w-12 h-12 rounded-full"
                   />
                 )}
-                <span className="font-medium">{room.name}</span>
+                <div className="flex items-center space-x-2">
+                  <span className="font-medium">{room.name}</span>
+                  {loadingRoomId === room.id && (
+                    <Loader2 className="h-4 w-4 animate-spin text-gray-500" />
+                  )}
+                </div>
               </div>
 
               <div className="flex space-x-2">
@@ -276,6 +305,10 @@ export default function ChatRoomList() {
                     </Button>
                   </DialogTrigger>
                   <DialogContent>
+                    <DialogPrimitive.Close className="absolute top-4 right-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none">
+                      <X className="h-4 w-4" />
+                      <span className="sr-only">閉じる</span>
+                    </DialogPrimitive.Close>
                     <DialogHeader>
                       <DialogTitle>ルーム名を変更</DialogTitle>
                       <DialogDescription>
@@ -287,7 +320,7 @@ export default function ChatRoomList() {
                         type="text"
                         value={newName}
                         onChange={(e) => setNewName(e.target.value)}
-                        className="border p-2 rounded w-full"
+                        className="border p-2 rounded w-full bg-white text-black dark:bg-gray-800 dark:text-white"
                       />
                       <Button
                         onClick={() =>
@@ -304,10 +337,35 @@ export default function ChatRoomList() {
                 <Button
                   variant="outline"
                   size="icon"
-                  onClick={() => leaveRoom(room.id)}
+                  onClick={() => handleLeaveRoom(room.id)}
                 >
                   <Trash2 className="h-4 w-4" />
                 </Button>
+                <Dialog
+                  open={roomToDelete !== null}
+                  onOpenChange={() => setRoomToDelete(null)}
+                >
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>トークルームから退出</DialogTitle>
+                      <DialogDescription>
+                        本当にこのトークルームから退出しますか？
+                        退出すると、このルームのすべてのメッセージも削除されます。
+                      </DialogDescription>
+                    </DialogHeader>
+                    <div className="flex justify-end space-x-2">
+                      <Button
+                        variant="outline"
+                        onClick={() => setRoomToDelete(null)}
+                      >
+                        キャンセル
+                      </Button>
+                      <Button variant="destructive" onClick={confirmLeaveRoom}>
+                        退出する
+                      </Button>
+                    </div>
+                  </DialogContent>
+                </Dialog>
               </div>
             </div>
           ))}

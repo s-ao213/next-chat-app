@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
+import { ArrowLeft } from "lucide-react";
 import { Button } from "../../_components/ui/Button";
 import Header from "../../_components/Header";
 import { supabase } from "@/lib/supabaseClient";
 import type { Message, ChatRoom, ChatRoomMember } from "../../_types/chat";
-import { Send, Users, ArrowDown, Bell } from "lucide-react";
+import { Send, Users, ArrowDown, Bell, X } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -15,8 +16,10 @@ import {
   DialogTrigger,
   DialogDescription,
 } from "../../_components/ui/Dialog";
+import { DialogClose } from "@radix-ui/react-dialog";
 
 export default function ChatRoom() {
+  const router = useRouter();
   const { id } = useParams();
   const [room, setRoom] = useState<ChatRoom | null>(null);
   const [members, setMembers] = useState<ChatRoomMember[]>([]);
@@ -31,6 +34,10 @@ export default function ChatRoom() {
   // スクロールを処理する関数
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+
+  const handleGoBack = () => {
+    router.push("/chat"); // チャット一覧ページに戻る
   };
 
   // 初期化用のuseEffect（最初のページ読み込み時の処理）
@@ -287,6 +294,15 @@ export default function ChatRoom() {
       <div className="max-w-4xl mx-auto p-4">
         <div className="bg-white p-4 rounded-t-lg shadow flex justify-between items-center">
           <div className="flex items-center space-x-4">
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={handleGoBack}
+              className="mr-2"
+            >
+              <ArrowLeft className="h-4 w-4" />
+            </Button>
+
             {room?.icon_url && (
               <img
                 src={room.icon_url}
@@ -311,6 +327,10 @@ export default function ChatRoom() {
               </Button>
             </DialogTrigger>
             <DialogContent>
+              <DialogClose className="absolute top-4 right-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none">
+                <X className="h-4 w-4" />
+                <span className="sr-only">閉じる</span>
+              </DialogClose>
               <DialogHeader>
                 <DialogTitle>メンバー一覧</DialogTitle>
                 <DialogDescription>
@@ -323,14 +343,27 @@ export default function ChatRoom() {
                     key={member.user_id}
                     className="flex items-center space-x-3"
                   >
-                    {member.user.avatar_url && (
+                    {member.user.avatar_url ? (
                       <img
                         src={member.user.avatar_url}
                         alt=""
-                        className="w-8 h-8 rounded-full"
+                        className="w-10 h-10 rounded-full"
                       />
+                    ) : (
+                      <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center">
+                        <span className="text-gray-500 text-lg font-medium">
+                          {member.user.name?.charAt(0).toUpperCase() || "?"}
+                        </span>
+                      </div>
                     )}
-                    <span>{member.user.name}</span>
+                    <div className="flex flex-col">
+                      <span className="font-medium">
+                        {member.user.name || "Unknown User"}
+                      </span>
+                      <span className="text-sm text-gray-500">
+                        {member.user_id === currentUser ? "あなた" : "メンバー"}
+                      </span>
+                    </div>
                   </div>
                 ))}
               </div>
