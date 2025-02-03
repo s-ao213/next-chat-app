@@ -1,6 +1,6 @@
 {
-  "name": "Next-Blog-App",
-  "short_name": "BlogApp",
+  "name": "Next-Chat-App",
+  "short_name": "ChatApp",
   "description": "",
   "start_url": "/",
   "display": "standalone",
