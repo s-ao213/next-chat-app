@@ -181,7 +181,7 @@ export default function NewChatRoom() {
             disabled={loading || !name.trim()}
             className="w-full"
           >
-            {loading ? "作成中です..." : "作成する"}
+            {loading ? "作成中..." : "作成する"}
           </Button>
         </form>
       </div>
