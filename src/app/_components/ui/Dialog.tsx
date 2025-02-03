@@ -1,4 +1,3 @@
-// src/components/ui/dialog.tsx
 import * as React from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 
@@ -35,12 +34,24 @@ const DialogContent = React.forwardRef<
       shadow-2xl 
       p-6 
       focus:outline-none 
-      dark:bg-gray-900 // より暗い背景色
+      dark:bg-gray-900
       dark:border-gray-700
       transition-all duration-300
-      text-gray-900 // デフォルトテキスト色を追加
-      dark:text-gray-50 // ダークモード時のテキスト色
-      "
+      text-gray-900
+      dark:text-gray-50"
+      onOpenAutoFocus={(event) => {
+        event.preventDefault();
+        if (event.currentTarget) {
+          const focusableElements = (
+            event.currentTarget as HTMLElement
+          ).querySelectorAll(
+            'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+          );
+          if (focusableElements.length > 0) {
+            (focusableElements[0] as HTMLElement).focus();
+          }
+        }
+      }}
       {...props}
     >
       {children}
@@ -77,7 +88,7 @@ const DialogTitle = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <DialogPrimitive.Title
     ref={ref}
-    className="text-2xl font-bold text-gray-900 dark:text-gray-50 mb-2" // より濃い/明るい色に変更
+    className="text-2xl font-bold text-gray-900 dark:text-gray-50 mb-2"
     {...props}
   />
 ));
@@ -89,11 +100,26 @@ const DialogDescription = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <DialogPrimitive.Description
     ref={ref}
-    className="text-sm text-gray-700 dark:text-gray-200 mb-4" // より濃い/明るい色に変更
+    className="text-sm text-gray-700 dark:text-gray-200 mb-4"
     {...props}
   />
 ));
 DialogDescription.displayName = DialogPrimitive.Description.displayName;
+
+// カスタムコンポーネントの型定義
+export interface DialogHeaderProps
+  extends React.HTMLAttributes<HTMLDivElement> {}
+export interface DialogFooterProps
+  extends React.HTMLAttributes<HTMLDivElement> {}
+
+// Radix UIからの型のエクスポート
+export type {
+  DialogProps,
+  DialogTriggerProps,
+  DialogContentProps,
+  DialogTitleProps,
+  DialogDescriptionProps,
+} from "@radix-ui/react-dialog";
 
 export {
   Dialog,
@@ -105,5 +131,4 @@ export {
   DialogFooter,
   DialogTitle,
   DialogDescription,
-  DialogPrimitive,
 };
