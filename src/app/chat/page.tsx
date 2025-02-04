@@ -128,8 +128,6 @@ export default function ChatRoomList() {
         console.error("Room error:", roomError);
         return;
       }
-
-      console.log("Loaded rooms:", roomData); // デバッグ用
       setRooms(roomData || []);
     } catch (error) {
       console.error("Error in loadRooms:", error);
