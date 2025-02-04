@@ -18,9 +18,26 @@ export default function JoinRoom({
   const [roomName, setRoomName] = useState<string | null>(null);
 
   useEffect(() => {
-    if (params.inviteCode) {
-      checkAndJoinRoom();
-    }
+    const checkAuth = async () => {
+      const {
+        data: { session },
+        error,
+      } = await supabase.auth.getSession();
+
+      if (error || !session) {
+        // セッションがない場合は現在のURLをエンコードしてリダイレクト先として保存
+        const returnUrl = encodeURIComponent(window.location.pathname);
+        router.push(`/login?returnUrl=${returnUrl}`);
+        return;
+      }
+
+      // 認証済みの場合はルーム参加処理を実行
+      if (params.inviteCode) {
+        checkAndJoinRoom();
+      }
+    };
+
+    checkAuth();
   }, [params.inviteCode]);
 
   const checkAndJoinRoom = async () => {

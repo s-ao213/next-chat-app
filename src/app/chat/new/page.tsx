@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/app/_components/ui/Button";
 import Header from "@/app/_components/Header";
 import { supabase } from "@/lib/supabaseClient";
+import { ArrowLeft } from "lucide-react"; // Lucide Reactから戻るアイコンをインポート
 
 export default function NewChatRoom() {
   const [name, setName] = useState("");
@@ -139,7 +140,17 @@ export default function NewChatRoom() {
     <div className="min-h-screen bg-gray-100">
       <Header />
       <div className="max-w-md mx-auto p-4">
-        <h1 className="text-2xl font-bold mb-6">新規トークルーム作成</h1>
+        <div className="flex items-center mb-6">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => router.push("/chat")}
+            className="mr-2"
+          >
+            <ArrowLeft className="h-6 w-6" />
+          </Button>
+          <h1 className="text-2xl font-bold">新規トークルーム作成</h1>
+        </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>

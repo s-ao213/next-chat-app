@@ -239,7 +239,7 @@ export default function ChatRoomList() {
                     value={inviteCode}
                     onChange={(e) => setInviteCode(e.target.value)}
                     placeholder="招待コードを入力"
-                    className="border p-2 rounded w-full"
+                    className="border p-2 rounded w-full text-black dark:text-white dark:bg-gray-800 bg-white"
                   />
                   <Button
                     onClick={handleJoinRoom}
