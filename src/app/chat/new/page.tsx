@@ -31,6 +31,26 @@ export default function NewChatRoom() {
         return;
       }
 
+      // 2. ユーザーの現在のグループ数を確認
+      const { count: groupCount, error: countError } = await supabase
+        .from("chat_room_members")
+        .select("*", { count: "exact" })
+        .eq("user_id", user.id);
+
+      if (countError) {
+        alert("エラーが発生しました");
+        return;
+      }
+
+      // 3. グループ数が5以上の場合は作成を制限
+      if (groupCount && groupCount >= 5) {
+        alert(
+          "参加できるグループは5つまでです。他のグループから退会してから再度お試しください。"
+        );
+        router.push("/chat");
+        return;
+      }
+
       // 2. アイコンのアップロード（もしあれば）
       let iconUrl = null;
       if (iconFile) {
@@ -68,15 +88,15 @@ export default function NewChatRoom() {
         }
       }
 
-      // 3. ルーム作成
+      // 3. ルーム作成の部分を修正
       const { data: roomData, error: roomError } = await supabase
         .from("chat_rooms")
-        .insert([
-          {
-            name: name.trim(),
-            icon_url: iconUrl,
-          },
-        ])
+        .insert({
+          // 配列ではなくオブジェクトとして直接渡す
+          name: name.trim(),
+          icon_url: iconUrl,
+          invite_code: crypto.randomUUID(), // invite_codeも同時に設定
+        })
         .select()
         .single();
 

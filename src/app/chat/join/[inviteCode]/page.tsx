@@ -55,7 +55,30 @@ export default function JoinRoom({
         return;
       }
 
-      // 2. ルーム確認
+      // 2. ユーザーの現在のグループ数を確認
+      const { count: groupCount, error: countError } = await supabase
+        .from("chat_room_members")
+        .select("*", { count: "exact" })
+        .eq("user_id", user.id);
+
+      if (countError) {
+        setError("エラーが発生しました");
+        return;
+      }
+
+      // 3. グループ数が5以上の場合は参加を制限
+      if (groupCount && groupCount >= 5) {
+        setError(
+          "参加できるグループは5つまでです。他のグループから退会してから再度お試しください。"
+        );
+        // 3秒後にチャット一覧ページに戻る
+        setTimeout(() => {
+          router.push("/chat");
+        }, 3000);
+        return;
+      }
+
+      // 4. ルーム確認
       const { data: room, error: roomError } = await supabase
         .from("chat_rooms")
         .select("id, name")
@@ -69,7 +92,7 @@ export default function JoinRoom({
 
       setRoomName(room.name);
 
-      // 3. メンバーシップ確認
+      // 5. メンバーシップ確認
       const { data: existingMember } = await supabase
         .from("chat_room_members")
         .select()
@@ -82,7 +105,7 @@ export default function JoinRoom({
         return;
       }
 
-      // 4. メンバー追加
+      // 6. メンバー追加
       const { error: joinError } = await supabase
         .from("chat_room_members")
         .insert([
