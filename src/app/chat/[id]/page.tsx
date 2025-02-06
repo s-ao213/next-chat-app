@@ -64,7 +64,6 @@ export default function ChatRoom() {
           table: "messages",
           filter: `room_id=eq.${id}`,
         },
-        // リアルタイム更新の処理内
         async (payload) => {
           // プロファイル情報を取得
           const { data: profile } = await supabase
@@ -73,39 +72,25 @@ export default function ChatRoom() {
             .eq("id", payload.new.user_id)
             .single();
 
-          const { data: newMessage, error } = await supabase
-            .from("messages")
-            .select(
-              `
-      *,
-      users!user_id (
-        id,
-        name,
-        avatar_url
-      )
-    `
-            )
-            .eq("id", payload.new.id)
-            .single();
+          const newMessage: Message = {
+            id: payload.new.id,
+            room_id: payload.new.room_id,
+            user_id: payload.new.user_id,
+            content: payload.new.content,
+            created_at: payload.new.created_at,
+            user: {
+              id: payload.new.user_id,
+              name: profile?.name || "Unknown User",
+              avatar_url: profile?.avatar_url,
+            },
+          };
 
-          if (!error && newMessage) {
-            setMessages((prev) => [
-              ...prev,
-              {
-                ...newMessage,
-                user: {
-                  id: newMessage.user_id,
-                  name:
-                    profile?.name || newMessage.users?.name || "Unknown User",
-                  avatar_url:
-                    profile?.avatar_url || newMessage.users?.avatar_url,
-                },
-              },
-            ]);
+          setMessages((prev) => [...prev, newMessage]);
 
-            setTimeout(() => {
-              messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-            }, 100);
+          if (shouldAutoScroll) {
+            setTimeout(scrollToBottom, 100);
+          } else {
+            setUnreadCount((prev) => prev + 1);
           }
         }
       )
@@ -156,51 +141,44 @@ export default function ChatRoom() {
 
   const loadMembers = async () => {
     try {
-      // プロファイル情報を含めたメンバー情報を取得
-      const { data: profilesData } = await supabase
-        .from("profiles")
-        .select("id, name, avatar_url");
-
-      // プロファイル情報をマップとして保持
-      const profilesMap = new Map(
-        profilesData?.map((profile) => [profile.id, profile]) || []
-      );
-
-      const { data, error } = await supabase
+      // 1. まずチャットルームのメンバー情報を取得
+      const { data: members, error: membersError } = await supabase
         .from("chat_room_members")
-        .select(
-          `
-        *,
-        users!user_id (
-          id,
-          name,
-          avatar_url
-        )
-      `
-        )
+        .select("*")
         .eq("room_id", id);
 
-      if (error) {
-        console.error("Error loading members:", error);
+      if (membersError) {
+        console.error("Error loading members:", membersError);
         return;
       }
 
-      // プロファイル情報を優先してメンバー情報を設定
-      setMembers(
-        data?.map((member) => ({
-          ...member,
-          user: {
-            id: member.user_id,
-            name:
-              profilesMap.get(member.user_id)?.name ||
-              member.users?.name ||
-              "Unknown User",
-            avatar_url:
-              profilesMap.get(member.user_id)?.avatar_url ||
-              member.users?.avatar_url,
-          },
-        })) || []
+      // 2. メンバーのプロファイル情報を取得
+      const userIds = members.map((member) => member.user_id);
+      const { data: profiles, error: profilesError } = await supabase
+        .from("profiles")
+        .select("id, name, avatar_url")
+        .in("id", userIds);
+
+      if (profilesError) {
+        console.error("Error loading profiles:", profilesError);
+        return;
+      }
+
+      // 3. データを結合
+      const profilesMap = new Map(
+        profiles.map((profile) => [profile.id, profile])
       );
+
+      const membersWithProfiles = members.map((member) => ({
+        ...member,
+        user: profilesMap.get(member.user_id) || {
+          id: member.user_id,
+          name: "Unknown User",
+          avatar_url: null,
+        },
+      }));
+
+      setMembers(membersWithProfiles);
     } catch (error) {
       console.error("Error in loadMembers:", error);
     }
@@ -208,59 +186,47 @@ export default function ChatRoom() {
 
   const loadMessages = async (shouldScroll = true) => {
     try {
-      // プロファイル情報を別途取得
-      const { data: profilesData } = await supabase
-        .from("profiles")
-        .select("id, name, avatar_url");
-
-      // プロファイル情報をマップとして保持
-      const profilesMap = new Map(
-        profilesData?.map((profile) => [profile.id, profile]) || []
-      );
-
-      // メッセージを取得
-      const { data, error } = await supabase
+      // 1. メッセージを取得
+      const { data: messages, error: messagesError } = await supabase
         .from("messages")
-        .select(
-          `
-        *,
-        users!user_id (
-          id,
-          name,
-          avatar_url
-        )
-      `
-        )
+        .select("*")
         .eq("room_id", id)
         .order("created_at", { ascending: false })
         .limit(30);
 
-      if (error) {
-        console.error("Error loading messages:", error);
+      if (messagesError) {
+        console.error("Error loading messages:", messagesError);
         return;
       }
 
-      // メッセージを昇順に戻して設定（プロフィール情報があれば優先）
-      setMessages(
-        data?.reverse().map((message) => ({
-          ...message,
-          user: {
-            id: message.user_id,
-            name:
-              profilesMap.get(message.user_id)?.name ||
-              message.users?.name ||
-              "Unknown User",
-            avatar_url:
-              profilesMap.get(message.user_id)?.avatar_url ||
-              message.users?.avatar_url,
-          },
-        })) || []
-      );
+      // 2. プロファイル情報を取得
+      const userIds = [...new Set(messages.map((m) => m.user_id))];
+      const { data: profiles, error: profilesError } = await supabase
+        .from("profiles")
+        .select("id, name, avatar_url")
+        .in("id", userIds);
+
+      if (profilesError) {
+        console.error("Error loading profiles:", profilesError);
+        return;
+      }
+
+      // 3. データを結合して設定
+      const profilesMap = new Map(profiles.map((p) => [p.id, p]));
+      const messagesWithProfiles = messages.map((message) => ({
+        ...message,
+        user: profilesMap.get(message.user_id) || {
+          id: message.user_id,
+          name: "Unknown User",
+          avatar_url: null,
+        },
+      }));
+
+      // 昇順に戻して設定
+      setMessages(messagesWithProfiles.reverse());
 
       if (shouldScroll) {
-        setTimeout(() => {
-          scrollToBottom();
-        }, 100);
+        setTimeout(scrollToBottom, 100);
       }
     } catch (error) {
       console.error("Error in loadMessages:", error);
