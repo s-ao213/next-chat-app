@@ -18,6 +18,31 @@ import {
 } from "../../_components/ui/Dialog";
 import { DialogClose } from "@radix-ui/react-dialog";
 
+// ヘルパー関数を修正
+const encryptMessage = (text: string): string => {
+  try {
+    return btoa(encodeURIComponent(text)) + "_encrypted"; // フラグを追加
+  } catch (error) {
+    console.error("Encryption error:", error);
+    return text;
+  }
+};
+
+const decryptMessage = (text: string): string => {
+  try {
+    // 暗号化されたメッセージかどうかをチェック
+    if (text.endsWith("_encrypted")) {
+      const encryptedText = text.slice(0, -"_encrypted".length);
+      return decodeURIComponent(atob(encryptedText));
+    }
+    // 暗号化されていない既存のメッセージはそのまま返す
+    return text;
+  } catch (error) {
+    console.error("Decryption error:", error);
+    return text;
+  }
+};
+
 export default function ChatRoom() {
   const router = useRouter();
   const { id } = useParams();
@@ -65,7 +90,6 @@ export default function ChatRoom() {
           filter: `room_id=eq.${id}`,
         },
         async (payload) => {
-          // プロファイル情報を取得
           const { data: profile } = await supabase
             .from("profiles")
             .select("name, avatar_url")
@@ -76,7 +100,7 @@ export default function ChatRoom() {
             id: payload.new.id,
             room_id: payload.new.room_id,
             user_id: payload.new.user_id,
-            content: payload.new.content,
+            content: decryptMessage(payload.new.content), // メッセージを復号化
             created_at: payload.new.created_at,
             user: {
               id: payload.new.user_id,
@@ -186,7 +210,6 @@ export default function ChatRoom() {
 
   const loadMessages = async (shouldScroll = true) => {
     try {
-      // 1. メッセージを取得
       const { data: messages, error: messagesError } = await supabase
         .from("messages")
         .select("*")
@@ -199,7 +222,6 @@ export default function ChatRoom() {
         return;
       }
 
-      // 2. プロファイル情報を取得
       const userIds = [...new Set(messages.map((m) => m.user_id))];
       const { data: profiles, error: profilesError } = await supabase
         .from("profiles")
@@ -211,10 +233,12 @@ export default function ChatRoom() {
         return;
       }
 
-      // 3. データを結合して設定
       const profilesMap = new Map(profiles.map((p) => [p.id, p]));
+
+      // メッセージを復号化してからプロフィール情報と結合
       const messagesWithProfiles = messages.map((message) => ({
         ...message,
+        content: decryptMessage(message.content), // ここで復号化
         user: profilesMap.get(message.user_id) || {
           id: message.user_id,
           name: "Unknown User",
@@ -222,7 +246,7 @@ export default function ChatRoom() {
         },
       }));
 
-      // 昇順に戻して設定
+      // 復号化されたメッセージを状態にセット
       setMessages(messagesWithProfiles.reverse());
 
       if (shouldScroll) {
@@ -238,17 +262,19 @@ export default function ChatRoom() {
     if (!newMessage.trim() || !currentUser) return;
 
     try {
+      const encryptedContent = encryptMessage(newMessage.trim());
+
       const { error } = await supabase.from("messages").insert([
         {
           room_id: id,
           user_id: currentUser,
-          content: newMessage.trim(),
+          content: encryptedContent, // 暗号化したコンテンツを保存
         },
       ]);
 
       if (error) throw error;
       setNewMessage("");
-      setShouldAutoScroll(true); // 自分のメッセージを送信したら自動スクロールを有効に
+      setShouldAutoScroll(true);
     } catch (error) {
       console.error("Error sending message:", error);
     }
