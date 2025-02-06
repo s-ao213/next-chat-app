@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { useRouter } from "next/navigation";
 import Header from "@/app/_components/Header";
-import { UserCog } from "lucide-react"; // アイコンを追加
+import { UserCog, BookOpen } from "lucide-react"; // BookOpenアイコンを追加
 
 export default function UserPage() {
   const router = useRouter();
@@ -45,6 +45,20 @@ export default function UserPage() {
             </div>
             <p className="text-gray-600">
               アカウント情報の確認・変更ができます。
+            </p>
+          </div>
+
+          {/* 使い方ガイドカード */}
+          <div
+            onClick={() => router.push("/user/manual")}
+            className="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition-shadow cursor-pointer"
+          >
+            <div className="flex items-center space-x-4 mb-4">
+              <BookOpen size={32} className="text-green-600" />
+              <h2 className="text-xl font-semibold">使い方ガイド</h2>
+            </div>
+            <p className="text-gray-600">
+              アプリケーションの使い方や便利な機能を確認できます。
             </p>
           </div>
         </div>

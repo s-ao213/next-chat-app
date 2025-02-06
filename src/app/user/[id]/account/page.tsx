@@ -5,9 +5,18 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import Header from "@/app/_components/Header";
-import { Pencil, Save, X, AlertTriangle, Upload, User } from "lucide-react";
+import {
+  Pencil,
+  Save,
+  X,
+  AlertTriangle,
+  Upload,
+  User,
+  ArrowLeft,
+} from "lucide-react";
 import Image from "next/image";
 import { UserProfile } from "@/app/_types/user";
+import { Button } from "@/app/_components/ui/Button";
 
 export default function AccountPage({ params }: { params: { id: string } }) {
   const router = useRouter();
@@ -345,6 +354,14 @@ export default function AccountPage({ params }: { params: { id: string } }) {
       <Header />
       <div className="max-w-2xl mx-auto p-8">
         <div className="flex justify-between items-center mb-8">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => router.push("/user")}
+            className="mr-2"
+          >
+            <ArrowLeft className="h-6 w-6" />
+          </Button>
           <h1 className="text-3xl font-bold">アカウント設定</h1>
           {!isEditing ? (
             <button
