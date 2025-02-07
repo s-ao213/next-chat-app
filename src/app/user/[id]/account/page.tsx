@@ -17,9 +17,13 @@ import {
 import Image from "next/image";
 import { UserProfile } from "@/app/_types/user";
 import { Button } from "@/app/_components/ui/Button";
+import { useToast } from "@/app/_components/ui/Use-Toast";
+import { Toaster } from "@/app/_components/ui/Toaster";
+import error from "next/error";
 
 export default function AccountPage({ params }: { params: { id: string } }) {
   const router = useRouter();
+  const { toast } = useToast();
   const [email, setEmail] = useState<string>("");
   const [isEditing, setIsEditing] = useState(false);
   const [profile, setProfile] = useState<UserProfile>({
@@ -40,7 +44,6 @@ export default function AccountPage({ params }: { params: { id: string } }) {
   const [isUpdatingPassword, setIsUpdatingPassword] = useState(false);
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
-  const [errorMessage, setErrorMessage] = useState("");
   const [uploading, setUploading] = useState(false);
 
   // プロフィールデータの取得
@@ -53,7 +56,12 @@ export default function AccountPage({ params }: { params: { id: string } }) {
 
       if (sessionError) {
         console.error("Session error:", sessionError);
-        throw new Error("セッションの取得に失敗しました");
+        toast({
+          variant: "destructive",
+          title: "エラー",
+          description: "セッションの取得に失敗しました",
+        });
+        return;
       }
 
       if (!session) {
@@ -91,8 +99,12 @@ export default function AccountPage({ params }: { params: { id: string } }) {
             .single();
 
           if (insertError) {
-            console.error("Profile creation error:", insertError);
-            throw new Error("プロフィールの作成に失敗しました");
+            toast({
+              variant: "destructive",
+              title: "エラー",
+              description: "プロフィールの作成に失敗しました",
+            });
+            return;
           }
 
           setProfile(insertedProfile);
@@ -100,8 +112,12 @@ export default function AccountPage({ params }: { params: { id: string } }) {
           return;
         }
 
-        console.error("Profile fetch error:", profileError);
-        throw new Error("プロフィールの取得に失敗しました");
+        toast({
+          variant: "destructive",
+          title: "エラー",
+          description: "プロフィールの取得に失敗しました",
+        });
+        return;
       }
 
       if (profileData) {
@@ -110,7 +126,11 @@ export default function AccountPage({ params }: { params: { id: string } }) {
       }
     } catch (error: any) {
       console.error("Error in fetchProfile:", error);
-      setErrorMessage(error.message || "プロフィールの取得に失敗しました");
+      toast({
+        variant: "destructive",
+        title: "エラー",
+        description: error.message || "プロフィールの取得に失敗しました",
+      });
     }
   };
 
@@ -145,6 +165,7 @@ export default function AccountPage({ params }: { params: { id: string } }) {
   }, [params.id, router, isEditing]);
 
   // アバターアップロード処理
+  // アバターアップロード処理
   const handleAvatarUpload = async (
     event: React.ChangeEvent<HTMLInputElement>
   ) => {
@@ -156,88 +177,117 @@ export default function AccountPage({ params }: { params: { id: string } }) {
       setUploading(true);
       const file = event.target.files[0];
 
-      // ファイルサイズのチェック (2MB以下)
-      if (file.size > 2 * 1024 * 1024) {
-        throw new Error("ファイルサイズは2MB以下にしてください");
+      // ファイルサイズのチェック (5MB以下に緩和)
+      if (file.size > 5 * 1024 * 1024) {
+        throw new Error("ファイルサイズは5MB以下にしてください");
       }
 
       // ファイル形式のチェック
-      const allowedTypes = ["image/jpeg", "image/png", "image/gif"];
+      const allowedTypes = [
+        "image/jpeg",
+        "image/png",
+        "image/gif",
+        "image/webp",
+      ];
       if (!allowedTypes.includes(file.type)) {
-        throw new Error("JPG, PNG, GIF形式のみアップロード可能です");
+        throw new Error("JPG, PNG, GIF, WebP形式のみアップロード可能です");
       }
 
       // ファイル名の生成
       const fileExt = file.name.split(".").pop()?.toLowerCase();
+      if (!fileExt) {
+        throw new Error("ファイル形式が不正です");
+      }
+
       const fileName = `${params.id}-${Math.random().toString(36).slice(2)}.${fileExt}`;
 
-      // 古いアバター画像の削除
-      if (editedProfile.avatar_url) {
-        const oldPath = editedProfile.avatar_url.split("/").pop();
-        if (oldPath) {
-          const { error: removeError } = await supabase.storage
-            .from("avatars")
-            .remove([oldPath]);
+      try {
+        // 古いアバター画像の削除
+        if (editedProfile.avatar_url) {
+          const oldPath = editedProfile.avatar_url.split("/").pop();
+          if (oldPath) {
+            const { error: removeError } = await supabase.storage
+              .from("avatars")
+              .remove([oldPath]);
 
-          if (removeError) {
-            console.error("Old avatar removal error:", removeError);
-            // 古い画像の削除に失敗しても、新しい画像のアップロードは続行
+            if (removeError) {
+              console.error("古い画像の削除に失敗しました:", removeError);
+              // 古い画像の削除に失敗しても、新しい画像のアップロードは続行
+            }
           }
         }
-      }
 
-      // 新しいアバター画像のアップロード
-      const { error: uploadError, data: uploadData } = await supabase.storage
-        .from("avatars")
-        .upload(fileName, file, {
-          cacheControl: "3600",
-          upsert: false,
+        // 新しいアバター画像のアップロード
+        const { error: uploadError, data: uploadData } = await supabase.storage
+          .from("avatars")
+          .upload(fileName, file, {
+            cacheControl: "3600",
+            upsert: false,
+          });
+
+        if (uploadError) {
+          if (uploadError.message.includes("duplicate")) {
+            throw new Error(
+              "同じファイル名が既に存在します。もう一度お試しください"
+            );
+          }
+          throw new Error(
+            "画像のアップロードに失敗しました: " + uploadError.message
+          );
+        }
+
+        // 公開URLの取得
+        const { data: publicUrlData } = supabase.storage
+          .from("avatars")
+          .getPublicUrl(fileName);
+
+        if (!publicUrlData.publicUrl) {
+          throw new Error("画像URLの取得に失敗しました");
+        }
+
+        // プロフィールの更新
+        const { error: updateError } = await supabase
+          .from("profiles")
+          .update({
+            avatar_url: publicUrlData.publicUrl,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", params.id);
+
+        if (updateError) {
+          // プロフィール更新に失敗した場合、アップロードした画像を削除
+          await supabase.storage.from("avatars").remove([fileName]);
+          throw new Error(
+            "プロフィールの更新に失敗しました: " + updateError.message
+          );
+        }
+
+        setEditedProfile({
+          ...editedProfile,
+          avatar_url: publicUrlData.publicUrl,
         });
 
-      if (uploadError) {
-        throw uploadError;
+        toast({
+          variant: "success",
+          title: "成功",
+          description: "プロフィール画像を更新しました",
+        });
+      } catch (error: any) {
+        throw new Error(error.message || "画像の処理中にエラーが発生しました");
       }
-
-      // 公開URLの取得
-      const { data: publicUrlData } = supabase.storage
-        .from("avatars")
-        .getPublicUrl(fileName);
-
-      if (!publicUrlData.publicUrl) {
-        throw new Error("アバターURLの取得に失敗しました");
-      }
-
-      // プロフィールの更新
-      const { error: updateError } = await supabase
-        .from("profiles")
-        .update({
-          avatar_url: publicUrlData.publicUrl,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", params.id);
-
-      if (updateError) {
-        throw updateError;
-      }
-
-      setEditedProfile({
-        ...editedProfile,
-        avatar_url: publicUrlData.publicUrl,
-      });
-
-      setErrorMessage("");
     } catch (error: any) {
       console.error("Avatar upload error:", error);
-      setErrorMessage(error.message || "アバターのアップロードに失敗しました");
-
-      // エラーが発生した場合、編集中のプロフィールを元に戻す
+      toast({
+        variant: "destructive",
+        title: "エラー",
+        description: error.message || "画像のアップロードに失敗しました",
+      });
+      // エラー時は編集中のプロフィールを元に戻す
       setEditedProfile({ ...profile });
     } finally {
       setUploading(false);
     }
   };
-
-  // プロフィール保存
 
   const handleEdit = () => {
     setIsEditing(true);
@@ -247,13 +297,16 @@ export default function AccountPage({ params }: { params: { id: string } }) {
   const handleCancel = () => {
     setIsEditing(false);
     setEditedProfile({ ...profile });
-    setErrorMessage("");
   };
 
   const handleSave = async () => {
     try {
       if (!editedProfile.name?.trim()) {
-        setErrorMessage("名前を入力してください");
+        toast({
+          variant: "destructive",
+          title: "エラー",
+          description: "名前を入力してください",
+        });
         return;
       }
 
@@ -263,28 +316,47 @@ export default function AccountPage({ params }: { params: { id: string } }) {
         updated_at: new Date().toISOString(),
       };
 
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from("profiles")
         .update(updates)
         .eq("id", params.id)
-        .select();
+        .select()
+        .single();
 
       if (error) throw error;
 
-      setProfile(editedProfile);
+      // 更新されたデータで両方のステートを更新
+      setProfile(data);
+      setEditedProfile(data);
       setIsEditing(false);
-      setErrorMessage("");
-      alert("プロフィールを更新しました");
+
+      // 成功のトースト表示
+      toast({
+        variant: "success",
+        title: "保存完了",
+        description: "プロフィールを更新しました",
+      });
     } catch (error: any) {
       console.error("Save error:", error);
-      setErrorMessage(error.message || "更新中にエラーが発生しました");
+      // エラー時のトースト表示
+      toast({
+        variant: "destructive",
+        title: "エラー",
+        description: error.message || "更新中にエラーが発生しました",
+      });
+      // エラー時は編集中のプロフィールを元に戻す
+      setEditedProfile({ ...profile });
     }
   };
 
   const handleUpdateEmail = async () => {
     try {
       if (!newEmail.trim()) {
-        setErrorMessage("新しいメールアドレスを入力してください");
+        toast({
+          variant: "destructive",
+          title: "エラー",
+          description: "新しいメールアドレスを入力してください",
+        });
         return;
       }
 
@@ -293,24 +365,31 @@ export default function AccountPage({ params }: { params: { id: string } }) {
       });
       if (error) throw error;
 
-      alert(
-        "確認メールを送信しました。メールの指示に従って更新を完了してください。"
-      );
+      toast({
+        title: "確認メールを送信しました",
+        description: "メールの指示に従って更新を完了してください",
+      });
       setIsUpdatingEmail(false);
       setNewEmail("");
-      setErrorMessage("");
     } catch (error: any) {
       console.error("Email update error:", error);
-      setErrorMessage(
-        error.message || "メールアドレスの更新中にエラーが発生しました"
-      );
+      toast({
+        variant: "destructive",
+        title: "エラー",
+        description:
+          error.message || "メールアドレスの更新中にエラーが発生しました",
+      });
     }
   };
 
   const handleUpdatePassword = async () => {
     try {
       if (!newPassword.trim()) {
-        setErrorMessage("新しいパスワードを入力してください");
+        toast({
+          variant: "destructive",
+          title: "エラー",
+          description: "新しいパスワードを入力してください",
+        });
         return;
       }
 
@@ -319,16 +398,21 @@ export default function AccountPage({ params }: { params: { id: string } }) {
       });
       if (error) throw error;
 
-      alert("パスワードが更新されました");
+      toast({
+        title: "成功",
+        description: "パスワードを更新しました",
+      });
       setIsUpdatingPassword(false);
       setCurrentPassword("");
       setNewPassword("");
-      setErrorMessage("");
     } catch (error: any) {
       console.error("Password update error:", error);
-      setErrorMessage(
-        error.message || "パスワードの更新中にエラーが発生しました"
-      );
+      toast({
+        variant: "destructive",
+        title: "エラー",
+        description:
+          error.message || "パスワードの更新中にエラーが発生しました",
+      });
     }
   };
 
@@ -343,9 +427,12 @@ export default function AccountPage({ params }: { params: { id: string } }) {
       router.push("/login");
     } catch (error: any) {
       console.error("Account deletion error:", error);
-      setErrorMessage(
-        error.message || "アカウントの削除中にエラーが発生しました"
-      );
+      toast({
+        variant: "destructive",
+        title: "エラー",
+        description:
+          error.message || "アカウントの削除中にエラーが発生しました",
+      });
     }
   };
 
@@ -390,11 +477,6 @@ export default function AccountPage({ params }: { params: { id: string } }) {
             </div>
           )}
         </div>
-        {errorMessage && (
-          <div className="mb-4 p-4 bg-red-100 text-red-700 rounded-md">
-            {errorMessage}
-          </div>
-        )}
         {/* プロフィール設定 */}
         <div className="bg-white rounded-lg shadow-md p-6 mb-6">
           <h2 className="text-xl font-semibold mb-4">プロフィール設定</h2>
@@ -581,6 +663,7 @@ export default function AccountPage({ params }: { params: { id: string } }) {
           )}
         </div>{" "}
       </div>
+      <Toaster />
     </div>
   );
 }
