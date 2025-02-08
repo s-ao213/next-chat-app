@@ -1,9 +1,12 @@
+// src/app/login/page.tsx
 "use client";
 
 import { useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { faQuestionCircle } from "@fortawesome/free-solid-svg-icons";
 
 export default function Login() {
   const [email, setEmail] = useState("");
@@ -30,8 +33,16 @@ export default function Login() {
     <div className="min-h-screen flex items-center justify-center p-4">
       <form
         onSubmit={handleLogin}
-        className="bg-white p-6 sm:p-8 rounded shadow-md w-full max-w-md"
+        className="bg-white p-6 sm:p-8 rounded shadow-md w-full max-w-md relative"
       >
+        <Link
+          href="/login/help"
+          className="absolute top-4 right-4 text-gray-600 hover:text-gray-800"
+          title="ヘルプ"
+        >
+          <FontAwesomeIcon icon={faQuestionCircle} className="text-xl" />
+        </Link>
+
         <h2 className="text-2xl mb-4 text-center">ログイン</h2>
         <input
           type="email"
