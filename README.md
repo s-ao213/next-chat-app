@@ -126,6 +126,6 @@ graph TB
 
 作者に連絡する場合は以下までお願いします：
 
-- 📧 Email: 19850409aoi@gmail.com
+- 📧 Email: ri22077b@st.omu.ac.jp
 - 🌐 Portfolio: https://s-ao213.github.io/portfolio
 - 💼 GitHub: https://github.com/s-ao213
