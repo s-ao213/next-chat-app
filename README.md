@@ -17,7 +17,7 @@ RealChatは、リアルタイムコミュニケーションを実現するモダ
 ### 1. 📱 シンプルで直感的なUI
 
 ![PCのチャット画面](/public/img/chat-PC.png)
-![スマホのチャット画面](/public/img/chat-mobile.png>)
+![スマホのチャット画面](/public/img/chat-mobile.png)
 
 - モダンなデザインとレスポンシブ対応
 - メッセージの送信状態をリアルタイムで表示
