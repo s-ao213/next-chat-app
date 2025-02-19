@@ -45,6 +45,7 @@ export default function AccountPage({ params }: { params: { id: string } }) {
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [uploading, setUploading] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // プロフィールデータの取得
   const fetchProfile = async () => {
@@ -418,13 +419,48 @@ export default function AccountPage({ params }: { params: { id: string } }) {
 
   const handleDeleteAccount = async () => {
     try {
-      const { error } = await supabase.rpc("delete_user", {
-        user_id: params.id,
-      });
-      if (error) throw error;
+      setIsDeleting(true);
 
+      // セッションの確認
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (!session) {
+        throw new Error("セッションが見つかりません");
+      }
+
+      // 削除APIの呼び出し
+      const response = await fetch("/api/delete-account", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          userId: params.id,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "アカウントの削除に失敗しました");
+      }
+
+      // 成功メッセージを表示
+      toast({
+        variant: "success",
+        title: "アカウント削除完了",
+        description: "アカウントが削除されました。ログイン画面に移動します。",
+        duration: 3000,
+      });
+
+      // セッションのクリア
       await supabase.auth.signOut();
-      router.push("/login");
+
+      // 3秒後にログイン画面にリダイレクト
+      setTimeout(() => {
+        router.push("/login");
+      }, 3000);
     } catch (error: any) {
       console.error("Account deletion error:", error);
       toast({
@@ -432,7 +468,10 @@ export default function AccountPage({ params }: { params: { id: string } }) {
         title: "エラー",
         description:
           error.message || "アカウントの削除中にエラーが発生しました",
+        duration: 5000,
       });
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -654,9 +693,17 @@ export default function AccountPage({ params }: { params: { id: string } }) {
                 </button>
                 <button
                   onClick={handleDeleteAccount}
-                  className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700"
+                  disabled={isDeleting}
+                  className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 disabled:bg-red-400 disabled:cursor-not-allowed flex items-center justify-center"
                 >
-                  削除する
+                  {isDeleting ? (
+                    <>
+                      <span className="animate-spin mr-2">⚪</span>
+                      削除中...
+                    </>
+                  ) : (
+                    "削除する"
+                  )}
                 </button>
               </div>
             </div>
